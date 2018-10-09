@@ -2,10 +2,11 @@ package main
 
 import (
 	"fmt"
-	"time"
 
+	"k8s.io/api/apps/v1"
 	"k8s.io/api/extensions/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 const (
@@ -16,9 +17,10 @@ const (
 )
 
 type App struct {
-	Host    string
-	Config  *Config
-	ingress *v1beta1.Ingress
+	Host       string
+	Config     *Config
+	ingress    *v1beta1.Ingress
+	deployment *v1.Deployment
 }
 
 func NewApp(host string, config *Config) *App {
@@ -34,14 +36,19 @@ func (a *App) Unidle() error {
 		return err
 	}
 
+	err = a.getDeployment()
+	if err != nil {
+		return err
+	}
+
 	err = a.setReplicas(1)
 	if err != nil {
 		return err
 	}
 
-	for !a.isRunning() {
-		time.Sleep(25 * time.Millisecond)
-	}
+	// for !a.isRunning() {
+	// 	time.Sleep(25 * time.Millisecond)
+	// }
 
 	err = a.enableIngress()
 	if err != nil {
@@ -69,34 +76,40 @@ func (a *App) getIngress() error {
 
 	for _, ing := range list.Items {
 		if ing.Spec.Rules[0].Host == a.Host {
-			a.Config.Logger.Printf("Ingress for host found: %s (ns: %s)\n", ing.Name, ing.Namespace)
+			a.Config.Logger.Printf("Ingress found: '%s' (ns: '%s')\n", ing.Name, ing.Namespace)
 			a.ingress = &ing
 			return nil
 		}
 	}
 
-	return fmt.Errorf("Cannot find ingress for host '%s'", a.Host)
+	return fmt.Errorf("Can't fine ingress for host '%s'", a.Host)
 }
 
-// FYI: k8s has some kind of watch
-func (a *App) isRunning() bool {
-	// TODO
-	return false
-}
+// Get the deployment for the app to unidle
+//
+// This is the deployment with same name/namespace as ingress
+func (a *App) getDeployment() error {
+	deployment, err := a.Config.K8s.Apps().Deployments(a.ingress.Namespace).Get(a.ingress.Name, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("Can't find deployment '%s' in namespace '%s': %s", a.ingress.Name, a.ingress.Namespace, err)
+	}
 
-func (a *App) getReplicasBeforeIdled() int {
-	// TODO
-	return 1
-}
-
-func (a *App) removeIdledLabels() error {
-	// TODO
+	a.Config.Logger.Printf("Deployment found: '%s' (ns: '%s')\n", deployment.Name, deployment.Namespace)
+	a.deployment = deployment
 	return nil
 }
 
 func (a *App) setReplicas(replicas int) error {
-	// pods, _ := a.Config.K8s.CoreV1().Pods("").List(metav1.ListOptions{})
-	// fmt.Println("PODS = %+v", pods)
+	a.Config.Logger.Printf("Deployment '%s' (ns: '%s') had %d replicas", a.deployment.Name, a.deployment.Namespace, *a.deployment.Spec.Replicas)
+
+	patch := fmt.Sprintf("{\"spec\":{\"replicas\": %d}}", replicas)
+	deploymentPatched, err := a.Config.K8s.Apps().Deployments(a.deployment.Namespace).Patch(a.deployment.Name, types.MergePatchType, []byte(patch))
+	if err != nil {
+		return fmt.Errorf("PATCH to set replicas to %d failed on deployment '%s' (ns: '%s'): %s", replicas, a.deployment.Name, a.deployment.Namespace, err)
+	}
+
+	a.deployment = deploymentPatched
+	a.Config.Logger.Printf("Deployment '%s' (ns: '%s') has now %d replicas", a.deployment.Name, a.deployment.Namespace, *a.deployment.Spec.Replicas)
 
 	return nil
 }
@@ -104,4 +117,10 @@ func (a *App) setReplicas(replicas int) error {
 func (a *App) enableIngress() error {
 	// TODO
 	return nil
+}
+
+// FYI: k8s has some kind of watch
+func (a *App) isRunning() bool {
+	// TODO
+	return false
 }
