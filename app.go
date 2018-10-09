@@ -10,10 +10,10 @@ import (
 )
 
 const (
-	IDLED_LABEL    = "mojanalytics.xyz/idled"
-	IDLED_AT_LABEL = "mojanalytics.xyz/idled-at"
-	UNIDLER        = "unidler"
-	UNIDLER_NS     = "default"
+	UNIDLER             = "unidler"
+	UNIDLER_NS          = "default"
+	IDLED_LABEL         = "mojanalytics.xyz/idled"
+	IDLED_AT_ANNOTATION = "mojanalytics.xyz/idled-at"
 )
 
 type App struct {
@@ -46,9 +46,10 @@ func (a *App) Unidle() error {
 		return err
 	}
 
-	// for !a.isRunning() {
-	// 	time.Sleep(25 * time.Millisecond)
-	// }
+	err = a.waitForDeployment()
+	if err != nil {
+		return err
+	}
 
 	err = a.enableIngress()
 	if err != nil {
@@ -119,8 +120,26 @@ func (a *App) enableIngress() error {
 	return nil
 }
 
-// FYI: k8s has some kind of watch
-func (a *App) isRunning() bool {
-	// TODO
-	return false
+func (a *App) waitForDeployment() error {
+	opts := metav1.ListOptions{
+		FieldSelector: fmt.Sprintf("metadata.name==%s", a.deployment.Name),
+	}
+	watchRes, err := a.Config.K8s.Apps().Deployments(a.deployment.Namespace).Watch(opts)
+	if err != nil {
+		return fmt.Errorf("Error while trying to watch deployment '%s' (ns: %s): %s", a.deployment.Name, a.deployment.Namespace, err)
+	}
+
+	for event := range watchRes.ResultChan() {
+		deployment, ok := event.Object.(*v1.Deployment)
+		if !ok {
+			return fmt.Errorf("Watch event returned an unexpected object type: Expected *v1.Deployment Got: %+v", event.Object)
+		}
+
+		if deployment.Status.AvailableReplicas > 0 {
+			a.Config.Logger.Printf("Deployment '%s' (ns: '%s') has now available replicas", deployment.Name, deployment.Namespace)
+			break
+		}
+	}
+
+	return nil
 }
