@@ -10,10 +10,11 @@ import (
 )
 
 const (
-	UNIDLER             = "unidler"
-	UNIDLER_NS          = "default"
-	IDLED_LABEL         = "mojanalytics.xyz/idled"
-	IDLED_AT_ANNOTATION = "mojanalytics.xyz/idled-at"
+	UNIDLER    = "unidler"
+	UNIDLER_NS = "default"
+	// See escaping rules here 💩: http://jsonpatch.com
+	IDLED_LABEL         = "mojanalytics.xyz~1idled"
+	IDLED_AT_ANNOTATION = "mojanalytics.xyz~1idled-at"
 )
 
 type App struct {
@@ -61,10 +62,10 @@ func (a *App) Unidle() error {
 		return err
 	}
 
-	// err = a.removeIdledMetadata()
-	// if err != nil {
-	// 	return err
-	// }
+	err = a.removeIdledMetadata()
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -125,10 +126,10 @@ func (a *App) enableIngress() error {
 	{
 		"metadata": {
 			"annotations": {
-				"%s": "%s"
+				"kubernetes.io/ingress.class": "%s"
 			}
 		}
-	}`, "kubernetes.io/ingress.class", a.Config.IngressClassName)
+	}`, a.Config.IngressClassName)
 
 	ingressPatched, err := a.Config.K8s.ExtensionsV1beta1().Ingresses(a.ingress.Namespace).Patch(a.ingress.Name, types.MergePatchType, []byte(patch))
 	if err != nil {
@@ -187,5 +188,20 @@ func (a *App) waitForDeployment() error {
 		}
 	}
 
+	return nil
+}
+
+func (a *App) removeIdledMetadata() error {
+	patch := fmt.Sprintf(`[
+		{"op": "remove", "path": "/metadata/labels/%s"},
+		{"op": "remove", "path": "/metadata/annotations/%s"}
+	]`, IDLED_LABEL, IDLED_AT_ANNOTATION)
+
+	_, err := a.Config.K8s.Apps().Deployments(a.deployment.Namespace).Patch(a.deployment.Name, types.JSONPatchType, []byte(patch))
+	if err != nil {
+		fmt.Errorf("Failed to remove idled label/annotation from deployment '%s' (ns: '%s'): %s", a.deployment.Name, a.deployment.Namespace, err)
+	}
+
+	a.Config.Logger.Printf("Removed idled label/annotation from deployment '%s' (ns: '%s')", a.deployment.Name, a.deployment.Namespace)
 	return nil
 }
