@@ -103,7 +103,7 @@ func (a *App) getDeployment() error {
 func (a *App) setReplicas(replicas int) error {
 	a.Config.Logger.Printf("Deployment '%s' (ns: '%s') had %d replicas", a.deployment.Name, a.deployment.Namespace, *a.deployment.Spec.Replicas)
 
-	patch := fmt.Sprintf("{\"spec\":{\"replicas\": %d}}", replicas)
+	patch := fmt.Sprintf(`{"spec": {"replicas": %d}}`, replicas)
 	deploymentPatched, err := a.Config.K8s.Apps().Deployments(a.deployment.Namespace).Patch(a.deployment.Name, types.MergePatchType, []byte(patch))
 	if err != nil {
 		return fmt.Errorf("PATCH to set replicas to %d failed on deployment '%s' (ns: '%s'): %s", replicas, a.deployment.Name, a.deployment.Namespace, err)
@@ -116,7 +116,23 @@ func (a *App) setReplicas(replicas int) error {
 }
 
 func (a *App) enableIngress() error {
-	// TODO
+	patch := fmt.Sprintf(`
+	{
+		"metadata": {
+			"annotations": {
+				"%s": "%s"
+			}
+		}
+	}`, "kubernetes.io/ingress.class", a.Config.IngressClassName)
+
+	ingressPatched, err := a.Config.K8s.ExtensionsV1beta1().Ingresses(a.ingress.Namespace).Patch(a.ingress.Name, types.MergePatchType, []byte(patch))
+	if err != nil {
+		return fmt.Errorf("PATCH to enable ingress on ingress '%s' (ns: '%s'): %s", a.ingress.Name, a.ingress.Namespace, err)
+	}
+
+	a.ingress = ingressPatched
+	a.Config.Logger.Printf("Ingress '%s' (ns: '%s') is now enabled", a.ingress.Name, a.ingress.Namespace)
+
 	return nil
 }
 
