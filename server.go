@@ -13,7 +13,7 @@ func NewServer(conf *Config) *http.Server {
 	return &http.Server{
 		Addr:         conf.Port,
 		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 10 * time.Second,
-		IdleTimeout:  120 * time.Second,
+		WriteTimeout: 2 * time.Minute,
+		IdleTimeout:  2 * time.Minute,
 	}
 }
