@@ -56,6 +56,11 @@ func (a *App) Unidle() error {
 		return err
 	}
 
+	err = a.removeFromUnidlerIngress()
+	if err != nil {
+		return err
+	}
+
 	// err = a.removeIdledMetadata()
 	// if err != nil {
 	// 	return err
@@ -132,6 +137,31 @@ func (a *App) enableIngress() error {
 
 	a.ingress = ingressPatched
 	a.Config.Logger.Printf("Ingress '%s' (ns: '%s') is now enabled", a.ingress.Name, a.ingress.Namespace)
+
+	return nil
+}
+
+func (a *App) removeFromUnidlerIngress() error {
+	unidlerIngress, err := a.Config.K8s.ExtensionsV1beta1().Ingresses(UNIDLER_NS).Get(UNIDLER, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("Failed to get ingress '%s' (ns: %s): %s", UNIDLER, UNIDLER_NS, err)
+	}
+
+	// Remove rule for App's host
+	newRules := []v1beta1.IngressRule{}
+	for _, rule := range unidlerIngress.Spec.Rules {
+		if rule.Host != a.Host {
+			newRules = append(newRules, rule)
+		}
+	}
+	unidlerIngress.Spec.Rules = newRules
+
+	_, err = a.Config.K8s.ExtensionsV1beta1().Ingresses(UNIDLER_NS).Update(unidlerIngress)
+	if err != nil {
+		return fmt.Errorf("Failed to update ingress '%s' (ns: '%s'): %s", UNIDLER, UNIDLER_NS, err)
+	}
+
+	a.Config.Logger.Printf("Host '%s' removed from ingress '%s' (ns: '%s')", a.Host, UNIDLER, UNIDLER_NS)
 
 	return nil
 }
