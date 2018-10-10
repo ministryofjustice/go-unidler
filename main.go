@@ -9,6 +9,7 @@ func main() {
 
 	h := NewHandlers(config)
 	http.HandleFunc("/", h.Unidler)
+	http.HandleFunc("/healthz", h.Healthz)
 
 	config.Logger.Printf("Starting server on port %s...", config.Port)
 	srv := NewServer(config)

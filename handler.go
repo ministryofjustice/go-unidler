@@ -34,3 +34,7 @@ func (h *Handlers) Unidler(w http.ResponseWriter, r *http.Request) {
 	h.Config.Logger.Printf("'%s' unidled\n", host)
 	http.Redirect(w, r, r.URL.String(), http.StatusTemporaryRedirect)
 }
+
+func (h *Handlers) Healthz(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprint(w, "Still OK")
+}
