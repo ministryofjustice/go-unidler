@@ -26,7 +26,7 @@ func (h *Handlers) Unidler(w http.ResponseWriter, r *http.Request) {
 		h.Config.Logger.Printf("Error while unidling '%s': %s\n", host, err)
 
 		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "Error while unidling, please contact one of the developers\n")
+		fmt.Fprintf(w, "Failed to unidle. Try to refresh before contacting one of the developers\n")
 
 		return
 	}
