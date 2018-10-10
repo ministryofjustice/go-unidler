@@ -71,12 +71,13 @@ func (a *App) Unidle() error {
 }
 
 func (a *App) getIngress() error {
-	opts := metav1.ListOptions{
+	listOptions := metav1.ListOptions{
 		FieldSelector: fmt.Sprintf("metadata.name!=%s", UNIDLER),
+		LabelSelector: "app",
 	}
 
 	// NOTE: can't filter by spec.rules[0].host
-	list, err := a.Config.K8s.ExtensionsV1beta1().Ingresses("").List(opts)
+	list, err := a.Config.K8s.ExtensionsV1beta1().Ingresses("").List(listOptions)
 	if err != nil {
 		return err
 	}
@@ -96,10 +97,7 @@ func (a *App) getIngress() error {
 //
 // This is the deployment with `app` label as in ingress
 func (a *App) getDeployment() error {
-	appLabel, ok := a.ingress.Labels["app"]
-	if !ok {
-		return fmt.Errorf("Ingress '%s' (ns: '%s') doesn't have 'app' label. Can't find matching Deployment without this label", a.ingress.Name, a.ingress.Namespace)
-	}
+	appLabel := a.ingress.Labels["app"]
 
 	listOptions := metav1.ListOptions{
 		LabelSelector: fmt.Sprintf("app=%s", appLabel),
