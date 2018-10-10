@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Improved logic to determine Deployment to unidle to use `app`
   label. This makes the unidling more flexible and be used
   on more apps.
+- Improved wording and consistency of log messages
 
 
 ## [v0.0.3] - 2018-10-10

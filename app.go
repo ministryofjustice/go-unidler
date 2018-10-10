@@ -89,7 +89,7 @@ func (a *App) getIngress() error {
 		}
 	}
 
-	return fmt.Errorf("Can't fine ingress for host '%s'", a.Host)
+	return fmt.Errorf("Can't find Ingress for host '%s'", a.Host)
 }
 
 // Get the deployment for the app to unidle
@@ -98,7 +98,7 @@ func (a *App) getIngress() error {
 func (a *App) getDeployment() error {
 	appLabel, ok := a.ingress.Labels["app"]
 	if !ok {
-		return fmt.Errorf("Error getting deployment: Ingress '%s' (ns: '%s') doesn't have 'app' label. Can't find matching Deployment without this label", a.ingress.Name, a.ingress.Namespace)
+		return fmt.Errorf("Ingress '%s' (ns: '%s') doesn't have 'app' label. Can't find matching Deployment without this label", a.ingress.Name, a.ingress.Namespace)
 	}
 
 	listOptions := metav1.ListOptions{
@@ -106,15 +106,15 @@ func (a *App) getDeployment() error {
 	}
 	deployments, err := a.Config.K8s.Apps().Deployments(a.ingress.Namespace).List(listOptions)
 	if err != nil {
-		return fmt.Errorf("Error getting deployment: Can't retrieve list of deployments with label app='%s' (ns: '%s'): %s", appLabel, a.ingress.Namespace, err)
+		return fmt.Errorf("Can't retrieve list of Deployments with label app='%s' (ns: '%s'): %s", appLabel, a.ingress.Namespace, err)
 	}
 
 	if len(deployments.Items) != 1 {
-		return fmt.Errorf("Error getting deployment: Expected exactly 1 deployment with label app='%s' (ns: '%s'), got %d instead", appLabel, a.ingress.Namespace, len(deployments.Items))
+		return fmt.Errorf("Expected exactly 1 Deployment with label app='%s' (ns: '%s'), got %d instead", appLabel, a.ingress.Namespace, len(deployments.Items))
 	}
 
 	a.deployment = &deployments.Items[0]
-	a.Config.Logger.Printf("Deployment found: '%s' (ns: '%s')\n", a.deployment.Name, a.deployment.Namespace)
+	a.Config.Logger.Printf("Deployment found '%s' (ns: '%s')\n", a.deployment.Name, a.deployment.Namespace)
 	return nil
 }
 
@@ -124,7 +124,7 @@ func (a *App) setReplicas(replicas int) error {
 	patch := fmt.Sprintf(`{"spec": {"replicas": %d}}`, replicas)
 	deploymentPatched, err := a.Config.K8s.Apps().Deployments(a.deployment.Namespace).Patch(a.deployment.Name, types.MergePatchType, []byte(patch))
 	if err != nil {
-		return fmt.Errorf("PATCH to set replicas to %d failed on deployment '%s' (ns: '%s'): %s", replicas, a.deployment.Name, a.deployment.Namespace, err)
+		return fmt.Errorf("PATCH to set replicas to %d failed on Deployment '%s' (ns: '%s'): %s", replicas, a.deployment.Name, a.deployment.Namespace, err)
 	}
 
 	a.deployment = deploymentPatched
@@ -145,7 +145,7 @@ func (a *App) enableIngress() error {
 
 	ingressPatched, err := a.Config.K8s.ExtensionsV1beta1().Ingresses(a.ingress.Namespace).Patch(a.ingress.Name, types.MergePatchType, []byte(patch))
 	if err != nil {
-		return fmt.Errorf("PATCH to enable ingress on ingress '%s' (ns: '%s'): %s", a.ingress.Name, a.ingress.Namespace, err)
+		return fmt.Errorf("PATCH to enable Ingress failed on '%s' (ns: '%s'): %s", a.ingress.Name, a.ingress.Namespace, err)
 	}
 
 	a.ingress = ingressPatched
@@ -157,7 +157,7 @@ func (a *App) enableIngress() error {
 func (a *App) removeFromUnidlerIngress() error {
 	unidlerIngress, err := a.Config.K8s.ExtensionsV1beta1().Ingresses(UNIDLER_NS).Get(UNIDLER, metav1.GetOptions{})
 	if err != nil {
-		return fmt.Errorf("Failed to get ingress '%s' (ns: %s): %s", UNIDLER, UNIDLER_NS, err)
+		return fmt.Errorf("Failed to get Ingress '%s' (ns: %s): %s", UNIDLER, UNIDLER_NS, err)
 	}
 
 	// Remove rule for App's host
@@ -171,10 +171,10 @@ func (a *App) removeFromUnidlerIngress() error {
 
 	_, err = a.Config.K8s.ExtensionsV1beta1().Ingresses(UNIDLER_NS).Update(unidlerIngress)
 	if err != nil {
-		return fmt.Errorf("Failed to update ingress '%s' (ns: '%s'): %s", UNIDLER, UNIDLER_NS, err)
+		return fmt.Errorf("Failed to update rules on Ingress '%s' (ns: '%s'): %s", UNIDLER, UNIDLER_NS, err)
 	}
 
-	a.Config.Logger.Printf("Host '%s' removed from ingress '%s' (ns: '%s')", a.Host, UNIDLER, UNIDLER_NS)
+	a.Config.Logger.Printf("Host '%s' removed from Ingress '%s' (ns: '%s')", a.Host, UNIDLER, UNIDLER_NS)
 
 	return nil
 }
@@ -185,7 +185,7 @@ func (a *App) waitForDeployment() error {
 	}
 	watchRes, err := a.Config.K8s.Apps().Deployments(a.deployment.Namespace).Watch(opts)
 	if err != nil {
-		return fmt.Errorf("Error while trying to watch deployment '%s' (ns: %s): %s", a.deployment.Name, a.deployment.Namespace, err)
+		return fmt.Errorf("Error while watching Deployment '%s' (ns: %s): %s", a.deployment.Name, a.deployment.Namespace, err)
 	}
 
 	for event := range watchRes.ResultChan() {
@@ -211,9 +211,9 @@ func (a *App) removeIdledMetadata() error {
 
 	_, err := a.Config.K8s.Apps().Deployments(a.deployment.Namespace).Patch(a.deployment.Name, types.JSONPatchType, []byte(patch))
 	if err != nil {
-		fmt.Errorf("Failed to remove idled label/annotation from deployment '%s' (ns: '%s'): %s", a.deployment.Name, a.deployment.Namespace, err)
+		fmt.Errorf("Failed to remove idled label/annotation from Deployment '%s' (ns: '%s'): %s", a.deployment.Name, a.deployment.Namespace, err)
 	}
 
-	a.Config.Logger.Printf("Removed idled label/annotation from deployment '%s' (ns: '%s')", a.deployment.Name, a.deployment.Namespace)
+	a.Config.Logger.Printf("Removed idled label/annotation from Deployment '%s' (ns: '%s')", a.deployment.Name, a.deployment.Namespace)
 	return nil
 }
