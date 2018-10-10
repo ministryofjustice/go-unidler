@@ -102,7 +102,7 @@ func (a *App) getDeployment() error {
 	}
 
 	listOptions := metav1.ListOptions{
-		FieldSelector: fmt.Sprint("app=%s", appLabel),
+		LabelSelector: fmt.Sprintf("app=%s", appLabel),
 	}
 	deployments, err := a.Config.K8s.Apps().Deployments(a.ingress.Namespace).List(listOptions)
 	if err != nil {
