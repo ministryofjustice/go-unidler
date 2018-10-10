@@ -10,11 +10,11 @@ This is performing the reverse operation of the [idler](https://github.com/minis
 The application doesn't require any configuration to work.
 You can set the following environment variables if you need to:
 
-- `PORT` (default `":8080"`), port on which the server listen
-- `INGRESS_CLASS_NAME` (default: `"nginx"`), Ingress class name. This
-  depends on your kubernetes cluster and it will be used as value of the
-  `kubernetes.io/ingress.class` annotation on unidled applications (this
-  annotation is set to `disabled` when they're unidled)
+
+| Env variable         | Default   | Details |
+| -------------------- | --------- | ------- |
+| `PORT`               | `":8080"` | port on which the server listen |
+| `INGRESS_CLASS_NAME` | `"nginx"` | Ingress class name. This  depends on your kubernetes cluster and it will be used as value of the `kubernetes.io/ingress.class` annotation on unidled applications (this annotation is set to `disabled` when they're idled) |
 
 In addition to the above optional configuration the server will try to load
 the kubernetes configuration from in-cluster (this is the case when running
