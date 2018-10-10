@@ -5,6 +5,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [v0.0.4] - 2018-10-10
+### Changed
+- Improved logic to determine Deployment to unidle to use `app`
+  label. This makes the unidling more flexible and be used
+  on more apps.
+- Improved wording and consistency of log messages
+
+
 ## [v0.0.3] - 2018-10-10
 ### Changed
 - Improved wording of response when unidling failed.
