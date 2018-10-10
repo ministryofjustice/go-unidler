@@ -94,15 +94,27 @@ func (a *App) getIngress() error {
 
 // Get the deployment for the app to unidle
 //
-// This is the deployment with same name/namespace as ingress
+// This is the deployment with `app` label as in ingress
 func (a *App) getDeployment() error {
-	deployment, err := a.Config.K8s.Apps().Deployments(a.ingress.Namespace).Get(a.ingress.Name, metav1.GetOptions{})
-	if err != nil {
-		return fmt.Errorf("Can't find deployment '%s' in namespace '%s': %s", a.ingress.Name, a.ingress.Namespace, err)
+	appLabel, ok := a.ingress.Labels["app"]
+	if !ok {
+		return fmt.Errorf("Error getting deployment: Ingress '%s' (ns: '%s') doesn't have 'app' label. Can't find matching Deployment without this label", a.ingress.Name, a.ingress.Namespace)
 	}
 
-	a.Config.Logger.Printf("Deployment found: '%s' (ns: '%s')\n", deployment.Name, deployment.Namespace)
-	a.deployment = deployment
+	listOptions := metav1.ListOptions{
+		FieldSelector: fmt.Sprint("app=%s", appLabel),
+	}
+	deployments, err := a.Config.K8s.Apps().Deployments(a.ingress.Namespace).List(listOptions)
+	if err != nil {
+		return fmt.Errorf("Error getting deployment: Can't retrieve list of deployments with label app='%s' (ns: '%s'): %s", appLabel, a.ingress.Namespace, err)
+	}
+
+	if len(deployments.Items) != 1 {
+		return fmt.Errorf("Error getting deployment: Expected exactly 1 deployment with label app='%s' (ns: '%s'), got %d instead", appLabel, a.ingress.Namespace, len(deployments.Items))
+	}
+
+	a.deployment = &deployments.Items[0]
+	a.Config.Logger.Printf("Deployment found: '%s' (ns: '%s')\n", a.deployment.Name, a.deployment.Namespace)
 	return nil
 }
 
