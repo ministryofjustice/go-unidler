@@ -5,20 +5,22 @@ RUN apk update \
     && apk add --no-cache \
       ca-certificates \
       git \
+	  make \
     && rm -rf /var/cache/apk/*
 
 WORKDIR /go/src/github.com/ministryofjustice/go-unidler
 
-COPY app.go k8s.go main.go sse.go go.mod ./
+COPY vendor vendor
+COPY Makefile app.go k8s.go main.go sse.go go.mod ./
 
 # update vendored dependencies
-#RUN CGO_ENABLED=0 GOOS=linux GO111MODULE=on go mod vendor
+#RUN make vendored-packages
 
 # NOTE: statically compiled as final image is based on "scratch"
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags '-extldflags "-static"' -o go-unidler .
+RUN make static
 
 #FROM builder AS test
-#RUN CGO_ENABLED=0 GOOS=linux go test
+#RUN make test
 
 FROM scratch
 WORKDIR /bin
