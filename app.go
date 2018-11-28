@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"log"
+
 	"k8s.io/api/apps/v1"
 	"k8s.io/api/extensions/v1beta1"
 )
@@ -57,7 +59,7 @@ func (a *App) SetReplicas(replicas int32) {
 	}
 
 	a.deployment = updated
-	logger.Printf("Deployment '%s' (ns: '%s') replicas changed from %d to %d", name, ns, oldReplicas, *a.deployment.Spec.Replicas)
+	log.Printf("Deployment '%s' (ns: '%s') replicas changed from %d to %d", name, ns, oldReplicas, *a.deployment.Spec.Replicas)
 }
 
 // EnableIngress updates the App's ingress to route requests to the Deployment
@@ -80,7 +82,7 @@ func (a *App) EnableIngress(ingressClassName string) {
 	}
 
 	a.ingress = updated
-	logger.Printf("Ingress '%s' (ns: '%s') is now enabled", name, ns)
+	log.Printf("Ingress '%s' (ns: '%s') is now enabled", name, ns)
 }
 
 // RemoveFromUnidlerIngress removes the App's hostname from the Unidler Ingress,
@@ -105,7 +107,7 @@ func (a *App) RemoveFromUnidlerIngress(unidlerIngress *v1beta1.Ingress) {
 		return
 	}
 
-	logger.Printf("Host '%s' removed from unidler ingress", a.host)
+	log.Printf("Host '%s' removed from unidler ingress", a.host)
 }
 
 // RemoveIdledMetadata removes the App's label and annotation which indicate its
@@ -126,7 +128,7 @@ func (a *App) RemoveIdledMetadata() {
 
 	a.deployment = updated
 
-	logger.Printf("Removed idled label/annotation from deployment '%s' (ns: '%s')", a.deployment.Name, a.deployment.Namespace)
+	log.Printf("Removed idled label/annotation from deployment '%s' (ns: '%s')", a.deployment.Name, a.deployment.Namespace)
 }
 
 // WaitForDeployment blocks until the App's Deployment is ready to receive
@@ -150,7 +152,7 @@ func (a *App) WaitForDeployment() {
 		}
 
 		if dep.Status.AvailableReplicas > 0 {
-			logger.Printf("Deployment '%s' (ns: '%s') now has available replicas", dep.Name, dep.Namespace)
+			log.Printf("Deployment '%s' (ns: '%s') now has available replicas", dep.Name, dep.Namespace)
 			break
 		}
 	}

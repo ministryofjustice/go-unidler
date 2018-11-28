@@ -23,12 +23,10 @@ var (
 	broker           *Broker
 	ingressClassName string
 	k8s              UnidlerK8sClient
-	logger           *log.Logger
 	unidlerIngress   *v1beta1.Ingress
 )
 
 func main() {
-	logger = log.New(os.Stdout, "Unidler ", log.Ldate|log.Ltime|log.LUTC)
 	port, ok := os.LookupEnv("PORT")
 	if !ok {
 		port = ":8080"
@@ -39,12 +37,12 @@ func main() {
 	}
 	home, ok := os.LookupEnv("HOME")
 	if !ok {
-		logger.Fatalf("Couldn't determine HOME directory, is $HOME set?")
+		log.Fatalf("Couldn't determine HOME directory, is $HOME set?")
 	}
 	var err error
 	k8s, err = NewK8sClient(filepath.Join(home, ".kube", "config"))
 	if err != nil {
-		logger.Fatalf("%s", err)
+		log.Fatalf("%s", err)
 	}
 
 	// start a Server Side Events broker
@@ -59,23 +57,23 @@ func main() {
 	// get the Unidler ingress once only
 	unidlerIngress, err = k8s.Ingress(UnidlerNs, Unidler)
 	if err != nil {
-		logger.Fatalf("Can't find ingress '%s' (ns: '%s'): %s", Unidler, UnidlerNs, err)
+		log.Fatalf("Can't find ingress '%s' (ns: '%s'): %s", Unidler, UnidlerNs, err)
+	} else {
+		log.Printf("Found unidler ingress")
 	}
 
 	http.HandleFunc("/", unidle)
 	http.Handle("/events/", broker)
 	http.HandleFunc("/healthz", healthCheck)
 
-	logger.Printf("Starting server on port %s...", port)
+	log.Printf("Starting server on port %s...", port)
 	server := &http.Server{
 		Addr:         port,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 2 * time.Minute,
 		IdleTimeout:  2 * time.Minute,
 	}
-	if err := server.ListenAndServe(); err != nil {
-		logger.Fatalf("Server didn't start: %s", err)
-	}
+	log.Fatal(server.ListenAndServe())
 }
 
 func healthCheck(w http.ResponseWriter, req *http.Request) {
@@ -90,12 +88,13 @@ func unidle(w http.ResponseWriter, req *http.Request) {
 
 	tmpl, err := template.ParseFiles("templates/index.html")
 	if err != nil {
-		logger.Fatalf("Error parsing template: %s", err)
+		log.Fatalf("Error parsing template: %s", err)
 	}
 
 	tmpl.Execute(w, req.Host)
 
-	logger.Printf("Unidling '%s'...\n", req.Host)
+	go func(host string) {
+		log.Printf("Unidling '%s'...\n", host)
 
 	go func() {
 		app := NewApp(req.Host, k8s)
@@ -121,9 +120,9 @@ func unidle(w http.ResponseWriter, req *http.Request) {
 		app.RemoveIdledMetadata()
 		if app.err == nil {
 			broker.messages <- fmt.Sprint("Done!")
-			logger.Printf("'%s' unidled\n", req.Host)
+			log.Printf("'%s' unidled\n", host)
 		} else {
 			broker.messages <- fmt.Sprintf("Failed: %s", err)
 		}
-	}()
+	}(req.Host)
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 
 	"k8s.io/api/apps/v1"
 	"k8s.io/api/extensions/v1beta1"
@@ -117,7 +118,7 @@ func (k K8sClient) Deployment(ing *v1beta1.Ingress) (*v1.Deployment, error) {
 	}
 
 	dep := &deployments.Items[0]
-	logger.Printf("Deployment found '%s' (ns: '%s')\n", dep.Name, dep.Namespace)
+	log.Printf("Deployment found '%s' (ns: '%s')\n", dep.Name, dep.Namespace)
 	return dep, nil
 }
 
