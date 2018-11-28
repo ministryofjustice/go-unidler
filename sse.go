@@ -7,17 +7,20 @@ import (
 )
 
 type (
+	// Client represents a connected client (browser)
 	Client struct {
 		channel string
 		send    chan string
 	}
 
+	// Channel is a named channel which can broadcast messages to a list of Clients
 	Channel struct {
 		name        string
 		clients     map[*Client]bool
 		lastMessage string
 	}
 
+	// SseBroker represents the an server with a list of channels
 	SseBroker struct {
 		channels  map[string]*Channel
 		addClient chan *Client
@@ -46,6 +49,7 @@ func (ch *Channel) sendMessage(msg string) {
 	}
 }
 
+// NewSseBroker constructs a new SSE server and starts it running
 func NewSseBroker() *SseBroker {
 	s := &SseBroker{
 		make(map[string]*Channel),
@@ -56,7 +60,10 @@ func NewSseBroker() *SseBroker {
 	return s
 }
 
+// ServeHTTP receives HTTP requests from browsers and sends back SSEs
 func (s *SseBroker) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	log.Printf("HTTP request received for %s", req.URL.Path)
+
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "Streaming not supported", http.StatusInternalServerError)
@@ -67,13 +74,22 @@ func (s *SseBroker) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
-	c := newClient(req.Host)
+	// add the browser as a new client of the channel for the specified host
+	host := req.Host
+	q := req.URL.Query()
+	if h, ok := q["host"]; ok {
+		host = h[0]
+	}
+	c := newClient(host)
 	s.addClient <- c
-	closeNotify := w.(http.CloseNotifier).CloseNotify()
+	log.Printf("client '%v' created", c)
 
+	// remove the client if it closes the HTTP request
+	closeNotify := w.(http.CloseNotifier).CloseNotify()
 	go func() {
 		<-closeNotify
 		s.delClient <- c
+		log.Printf("client '%v' closed request", c)
 	}()
 
 	w.WriteHeader(http.StatusOK)
@@ -85,21 +101,21 @@ func (s *SseBroker) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
+// SendMessage broadcasts a message to a channel (or all channels)
 func (s *SseBroker) SendMessage(channel string, msg string) {
-	log.Printf("data: %s\n\n", msg)
-	if len(channel) == 0 {
-		log.Print("broadcasting message to all channels")
+	if channel == "" {
+		log.Printf("broadcasting message to all channels: %s", msg)
 		for _, ch := range s.channels {
 			ch.sendMessage(msg)
 		}
 	} else if _, ok := s.channels[channel]; ok {
-		log.Printf("message sent to channel '%s'", channel)
+		log.Printf("message sent to channel '%s': %s", channel, msg)
 		s.channels[channel].sendMessage(msg)
 	} else {
 		ch := newChannel(channel)
 		s.channels[ch.name] = ch
 		ch.lastMessage = msg
-		log.Printf("message not sent because channel '%s' has no clients", channel)
+		log.Printf("message not sent because channel '%s' has no clients: %s", channel, msg)
 	}
 }
 

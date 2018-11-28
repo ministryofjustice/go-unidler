@@ -7,6 +7,7 @@ import (
 	"k8s.io/api/apps/v1"
 	"k8s.io/api/extensions/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/oidc"
@@ -15,30 +16,28 @@ import (
 )
 
 type (
-	// K8sClient is a wrapper client for the Kubernetes API
-	K8sClient struct {
-		client *kubernetes.Clientset
-		config *rest.Config
-	}
-
-	// MockK8sClient is a mock of the K8sClient wrapper
-	MockK8sClient struct{}
-
-	// UnidlerK8sClient defines a minimal set of methods for a Kubernetes API
-	// client for the Unidler
-	UnidlerK8sClient interface {
+	// KubernetesWrapper defines a minimal set of methods for a Kubernetes API
+	// client for the Unidler - this allows easier testing
+	KubernetesWrapper interface {
 		Deployment(*v1beta1.Ingress) (*v1.Deployment, error)
 		Ingress(string, string) (*v1beta1.Ingress, error)
 		IngressForHost(string) (*v1beta1.Ingress, error)
 		ListIngresses(string, metav1.ListOptions) (*v1beta1.IngressList, error)
 		ListDeployments(string, metav1.ListOptions) (*v1.DeploymentList, error)
+		PatchDeployment(*v1.Deployment, string) (*v1.Deployment, error)
 		UpdateDeployment(*v1.Deployment) (*v1.Deployment, error)
 		UpdateIngress(*v1beta1.Ingress) (*v1beta1.Ingress, error)
 		WatchDeployment(*v1.Deployment) (watch.Interface, error)
 	}
+
+	// K8sClient is a wrapper client for the Kubernetes API
+	K8sClient struct {
+		client *kubernetes.Clientset
+		config *rest.Config
+	}
 )
 
-// NewK8sClient constructs a new K8sClient API wrapper
+// NewK8sClient constructs a new K8sClient
 func NewK8sClient(path string) (k *K8sClient, err error) {
 	k = &K8sClient{}
 	if err = k.loadConfig(path); err != nil {
@@ -84,17 +83,21 @@ func (k K8sClient) Ingress(ns string, name string) (*v1beta1.Ingress, error) {
 
 // IngressForHost gets the Kubernetes ingress for the specified hostname
 func (k K8sClient) IngressForHost(host string) (*v1beta1.Ingress, error) {
-	// Get all ingresses excluding the unidler ingress
+	// Get all ingresses with an app label excluding the unidler ingress
 	ingresses, err := k.ListIngresses("", metav1.ListOptions{
-		FieldSelector: fmt.Sprintf("metadata.name!=%s", Unidler),
+		FieldSelector: fmt.Sprintf("metadata.name!=%s", UnidlerName),
 		LabelSelector: "app",
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	// NOTE: can't filter by spec.rules[0].host
+	// Search the list for an ingress which has a rule for the specified host.
+	// Unfortunatly, kubernetes field selectors do not work for this.
+	// TODO: add a host label to app ingresses would allow us to ListIngresses
+	// where LabelSelector "host={host}"
 	for _, ing := range ingresses.Items {
+		// XXX assumes the ingress has only one rule
 		if ing.Spec.Rules[0].Host == host {
 			return &ing, nil
 		}
@@ -122,32 +125,26 @@ func (k K8sClient) Deployment(ing *v1beta1.Ingress) (*v1.Deployment, error) {
 	return dep, nil
 }
 
+// PatchDeployment patches a deployment in kubernetes with a specified JSON
+// patch
+func (k K8sClient) PatchDeployment(dep *v1.Deployment, patch string) (*v1.Deployment, error) {
+	return k.client.Apps().Deployments(dep.Namespace).Patch(dep.Name, types.JSONPatchType, []byte(patch))
+}
+
 // UpdateDeployment updates a deployment in kubernetes to match the specified
 // Deployment
 func (k K8sClient) UpdateDeployment(dep *v1.Deployment) (*v1.Deployment, error) {
-	updated, err := k.client.Apps().Deployments(dep.Namespace).Update(dep)
-	if err != nil {
-		return nil, fmt.Errorf("failed updating deployment %s (ns: %s): %s", dep.Name, dep.Namespace, err)
-	}
-	return updated, nil
+	return k.client.Apps().Deployments(dep.Namespace).Update(dep)
 }
 
 // UpdateIngress updates an ingress in kubernetes to match the specified Ingress
 func (k K8sClient) UpdateIngress(ing *v1beta1.Ingress) (*v1beta1.Ingress, error) {
-	updated, err := k.client.Extensions().Ingresses(ing.Namespace).Update(ing)
-	if err != nil {
-		return nil, fmt.Errorf("failed updating ingress %s (ns: %s): %s", ing.Name, ing.Namespace)
-	}
-	return updated, nil
+	return k.client.Extensions().Ingresses(ing.Namespace).Update(ing)
 }
 
 // WatchDeployment gets a channel to watch a Deployment
 func (k K8sClient) WatchDeployment(dep *v1.Deployment) (watch.Interface, error) {
-	w, err := k.client.Apps().Deployments(dep.Namespace).Watch(metav1.ListOptions{
+	return k.client.Apps().Deployments(dep.Namespace).Watch(metav1.ListOptions{
 		FieldSelector: fmt.Sprintf("metadata.name==%s", dep.Name),
 	})
-	if err != nil {
-		return nil, fmt.Errorf("error while watching deployment '%s' (ns: '%s'): %s", dep.Name, dep.Namespace, err)
-	}
-	return w, nil
 }

@@ -10,7 +10,13 @@
 	</ul>
 
 	<script type="text/javascript">
-		var source = new EventSource('/events/');
+		var url = '/events/';
+		var urlparams = new URLSearchParams(window.location.search);
+		var host = urlparams.get("host");
+		if (host) {
+			url += '?host=' + host;
+		}
+		var source = new EventSource(url);
 		var events = document.querySelector('ul');
 
 		source.onopen = function () {

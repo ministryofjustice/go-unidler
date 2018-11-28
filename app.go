@@ -3,17 +3,18 @@ package main
 import (
 	"fmt"
 	"log"
+	"strings"
 
 	"k8s.io/api/apps/v1"
 	"k8s.io/api/extensions/v1beta1"
 )
 
 const (
-	// IdledLabel is a metadata label which indicates a Deployment is idled
+	// IdledLabel is a metadata label which indicates a Deployment is idled.
 	IdledLabel = "mojanalytics.xyz/idled"
 	// IdledAtAnnotation is a metadata annotation which indicates the time a
 	// Deployment was idled and the number of replicas it had at that time,
-	// separated by a semicolon, eg: "2018-11-26T17:27:34;2"
+	// separated by a semicolon, eg: "2018-11-26T17:27:34;2".
 	IdledAtAnnotation = "mojanalytics.xyz/idled-at"
 )
 
@@ -22,138 +23,195 @@ type (
 	// deployment, with a corresponding hostname and ingress
 	App struct {
 		deployment *v1.Deployment
-		err        error
 		host       string
 		ingress    *v1beta1.Ingress
-		k8s        UnidlerK8sClient
+		k8s        KubernetesWrapper
+		name       string
+		namespace  string
+		status     StatusTracker
 	}
 )
 
 // NewApp constructs a new App and fetches the corresponding kubernetes ingress
 // and deployment
-func NewApp(host string, k8s UnidlerK8sClient) *App {
-	app := App{
-		host: host,
-		k8s:  k8s,
+func NewApp(host string, k8s KubernetesWrapper, s StatusTracker) (app *App, err error) {
+	app = &App{
+		host:   host,
+		k8s:    k8s,
+		status: s,
 	}
-	app.ingress, app.err = k8s.IngressForHost(host)
-	if app.err == nil {
-		app.deployment, app.err = k8s.Deployment(app.ingress)
+	app.ingress, err = k8s.IngressForHost(host)
+	if err != nil {
+		return nil, err
 	}
-	return &app
+	app.name = app.ingress.Name
+	app.namespace = app.ingress.Namespace
+	app.deployment, err = k8s.Deployment(app.ingress)
+	if err != nil {
+		return nil, err
+	}
+	return app, nil
+}
+
+// Unidle performs the actions to unidle an app
+func (a *App) Unidle() (err error) {
+	a.setStatus("Pending")
+
+	if err = a.SetReplicas(1); err != nil {
+		return
+	}
+	if err = a.WaitForDeployment(); err != nil {
+		return
+	}
+	if err = a.EnableIngress(ingressClassName); err != nil {
+		return
+	}
+	if err = a.RemoveFromUnidlerIngress(); err != nil {
+		return
+	}
+	if err = a.RemoveIdledMetadata(); err != nil {
+		return
+	}
+	a.setStatus("Ready")
+	return nil
+}
+
+func (a *App) log(msg string) {
+	log.Printf("Unidling '%s' (ns: '%s'): %s", a.name, a.namespace, msg)
+}
+
+func (a *App) setStatus(s string) {
+	a.status.SetStatus(s)
 }
 
 // SetReplicas updates an App's number of replicas to the specified number
-func (a *App) SetReplicas(replicas int32) {
-	if a.err != nil {
-		return
+func (a *App) SetReplicas(replicas int32) error {
+	current := *a.deployment.Spec.Replicas
+
+	if current != replicas {
+		a.setStatus("Restoring replicas")
+
+		a.deployment.Spec.Replicas = &replicas
+		_, err := a.k8s.UpdateDeployment(a.deployment)
+		if err != nil {
+			return fmt.Errorf("failed setting replicas to %d: %s", replicas, err)
+		}
+
+		a.log(fmt.Sprintf("Deployment replicas changed to %d", replicas))
+	} else {
+		a.log(fmt.Sprintf("Deployment replicas already %d", replicas))
 	}
 
-	oldReplicas := *a.deployment.Spec.Replicas
-	ns, name := a.deployment.Namespace, a.deployment.Name
-	a.deployment.Spec.Replicas = &replicas
-	updated, err := a.k8s.UpdateDeployment(a.deployment)
-	if err != nil {
-		a.err = fmt.Errorf("failed setting replicas to %d: %s", replicas, err)
-		return
-	}
-
-	a.deployment = updated
-	log.Printf("Deployment '%s' (ns: '%s') replicas changed from %d to %d", name, ns, oldReplicas, *a.deployment.Spec.Replicas)
+	return nil
 }
 
 // EnableIngress updates the App's ingress to route requests to the Deployment
-func (a *App) EnableIngress(ingressClassName string) {
-	if a.err != nil {
-		return
-	}
-
+func (a *App) EnableIngress(ingressClassName string) error {
+	ingressClass := "kubernetes.io/ingress.class"
 	if ingressClassName == "" {
 		ingressClassName = "nginx"
 	}
 
-	name, ns := a.ingress.Name, a.ingress.Namespace
+	current := a.ingress.Annotations[ingressClass]
 
-	a.ingress.Annotations["kubernetes.io/ingress.class"] = ingressClassName
-	updated, err := a.k8s.UpdateIngress(a.ingress)
-	if err != nil {
-		a.err = fmt.Errorf("failed enabling ingress: %s", err)
-		return
+	if current != ingressClassName {
+
+		a.setStatus("Enabling ingress")
+		a.ingress.Annotations[ingressClass] = ingressClassName
+		if _, err := a.k8s.UpdateIngress(a.ingress); err != nil {
+			return fmt.Errorf("failed enabling ingress: %s", err)
+		}
+
+		a.log("Ingress is now enabled")
+	} else {
+		a.log(fmt.Sprintf("Ingress already '%s'", ingressClassName))
 	}
-
-	a.ingress = updated
-	log.Printf("Ingress '%s' (ns: '%s') is now enabled", name, ns)
+	return nil
 }
 
 // RemoveFromUnidlerIngress removes the App's hostname from the Unidler Ingress,
 // preventing further requests from being handled by the Unidler
-func (a *App) RemoveFromUnidlerIngress(unidlerIngress *v1beta1.Ingress) {
-	if a.err != nil {
-		return
+func (a *App) RemoveFromUnidlerIngress() error {
+	unidlerIngress, err := a.k8s.Ingress(UnidlerNs, UnidlerName)
+	if err != nil {
+		return fmt.Errorf("couldn't find unidler ingress: %s", err)
 	}
 
 	// Remove rule for App's host
 	newRules := []v1beta1.IngressRule{}
+	found := false
 	for _, rule := range unidlerIngress.Spec.Rules {
 		if rule.Host != a.host {
 			newRules = append(newRules, rule)
+		} else {
+			found = true
 		}
 	}
 	unidlerIngress.Spec.Rules = newRules
 
-	_, err := a.k8s.UpdateIngress(unidlerIngress)
-	if err != nil {
-		a.err = fmt.Errorf("failed updating unidler ingress rules: %s", err)
-		return
-	}
+	if found {
+		a.setStatus("Removing from Unidler")
 
-	log.Printf("Host '%s' removed from unidler ingress", a.host)
+		if _, err := a.k8s.UpdateIngress(unidlerIngress); err != nil {
+			return fmt.Errorf("failed updating unidler ingress rules: %s", err)
+		}
+
+		a.log("Removed from unidler ingress")
+	} else {
+		a.log("Not in unidler ingress")
+	}
+	return nil
 }
 
 // RemoveIdledMetadata removes the App's label and annotation which indicate its
 // idled status, marking it as no longer idled
-func (a *App) RemoveIdledMetadata() {
-	if a.err != nil {
-		return
+func (a *App) RemoveIdledMetadata() error {
+	_, labelExists := a.deployment.Labels[IdledLabel]
+	_, annotationExists := a.deployment.Annotations[IdledAtAnnotation]
+
+	if labelExists || annotationExists {
+		a.setStatus("Marking as unidled")
+
+		patch := fmt.Sprintf(`[
+			{"op": "remove", "path": "/metadata/labels/%s"},
+			{"op": "remove", "path": "/metadata/annotations/%s"}
+		]`, jsonPatchEscape(IdledLabel), jsonPatchEscape(IdledAtAnnotation))
+		if _, err := a.k8s.PatchDeployment(a.deployment, patch); err != nil {
+			return fmt.Errorf("failed removing idled label/annotation: %s", err)
+		}
+
+		a.log("Removed idled label/annotation from deployment")
+	} else {
+		a.log("Deployment not marked as idled")
 	}
+	return nil
+}
 
-	delete(a.deployment.Labels, IdledLabel)
-	delete(a.deployment.Annotations, IdledAtAnnotation)
-
-	updated, err := a.k8s.UpdateDeployment(a.deployment)
-	if err != nil {
-		a.err = fmt.Errorf("failed removing idled label/annotation: %s", err)
-		return
-	}
-
-	a.deployment = updated
-
-	log.Printf("Removed idled label/annotation from deployment '%s' (ns: '%s')", a.deployment.Name, a.deployment.Namespace)
+// JSON patch requires "~" and "/" characters to be escaped as "~0" and "~1"
+// respectively. See http://jsonpatch.com/#json-pointer
+func jsonPatchEscape(s string) string {
+	return strings.Replace(strings.Replace(s, "~", "~0", -1), "/", "~1", -1)
 }
 
 // WaitForDeployment blocks until the App's Deployment is ready to receive
 // incoming requests
-func (a *App) WaitForDeployment() {
-	if a.err != nil {
-		return
-	}
-
+func (a *App) WaitForDeployment() error {
 	w, err := a.k8s.WatchDeployment(a.deployment)
 	if err != nil {
-		a.err = err
-		return
+		return err
 	}
 
 	for event := range w.ResultChan() {
 		dep, ok := event.Object.(*v1.Deployment)
 		if !ok {
-			a.err = fmt.Errorf("unexpected event type: %+v", event.Object)
-			return
+			return fmt.Errorf("unexpected event type: %+v", event.Object)
 		}
 
 		if dep.Status.AvailableReplicas > 0 {
-			log.Printf("Deployment '%s' (ns: '%s') now has available replicas", dep.Name, dep.Namespace)
 			break
 		}
 	}
+
+	a.log("Deployment has available replicas")
+	return nil
 }

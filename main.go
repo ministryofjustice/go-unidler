@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	// Unidler is the name of the kubernetes Unidler ingress
-	Unidler = "unidler"
+	// UnidlerName is the name of the kubernetes Unidler ingress
+	UnidlerName = "unidler"
 	// UnidlerNs is the namespace of the kubernetes Unidler ingress
 	UnidlerNs = "default"
 )
@@ -22,7 +22,8 @@ const (
 var (
 	broker           *SseBroker
 	ingressClassName string
-	k8s              UnidlerK8sClient
+	k8s              KubernetesWrapper
+	unidler          *Unidler
 	unidlerIngress   *v1beta1.Ingress
 )
 
@@ -48,13 +49,8 @@ func main() {
 	// start a Server Side Events broker
 	broker = NewSseBroker()
 
-	// get the Unidler ingress once only
-	unidlerIngress, err = k8s.Ingress(UnidlerNs, Unidler)
-	if err != nil {
-		log.Fatalf("Can't find ingress '%s' (ns: '%s'): %s", Unidler, UnidlerNs, err)
-	} else {
-		log.Printf("Found unidler ingress")
-	}
+	// start an Unidler server
+	unidler = NewUnidler(UnidlerNs, UnidlerName, k8s, broker)
 
 	http.HandleFunc("/", unidle)
 	http.Handle("/events/", broker)
@@ -71,52 +67,28 @@ func main() {
 }
 
 func healthCheck(w http.ResponseWriter, req *http.Request) {
+	log.Printf("HTTP request received for %s", req.URL.Path)
 	fmt.Fprint(w, "Still OK")
 }
 
 func unidle(w http.ResponseWriter, req *http.Request) {
 	if req.URL.Path != "/" {
-		w.WriteHeader(http.StatusNotFound)
 		return
 	}
+	log.Printf("HTTP request received for %s", req.URL.Path)
 
 	tmpl, err := template.ParseFiles("templates/index.html")
 	if err != nil {
 		log.Fatalf("Error parsing template: %s", err)
 	}
 
-	tmpl.Execute(w, req.Host)
+	host := req.Host
+	q := req.URL.Query()
+	if h, ok := q["host"]; ok {
+		host = h[0]
+	}
 
-	go func(host string) {
-		log.Printf("Unidling '%s'...\n", host)
+	tmpl.Execute(w, host)
 
-		broker.SendMessage(host, fmt.Sprintf("Fetching app '%s'", host))
-		app := NewApp(host, k8s)
-		if app.err == nil {
-			broker.SendMessage(host, fmt.Sprintf("App '%s' found", host))
-		}
-		app.SetReplicas(1)
-		if app.err == nil {
-			broker.SendMessage(host, fmt.Sprint("Restoring replicas"))
-		}
-		app.WaitForDeployment()
-		if app.err == nil {
-			broker.SendMessage(host, fmt.Sprint("Enabling ingress"))
-		}
-		app.EnableIngress(ingressClassName)
-		if app.err == nil {
-			broker.SendMessage(host, fmt.Sprint("Removing from Unidler"))
-		}
-		app.RemoveFromUnidlerIngress(unidlerIngress)
-		if app.err == nil {
-			broker.SendMessage(host, fmt.Sprint("Marking as unidled"))
-		}
-		app.RemoveIdledMetadata()
-		if app.err == nil {
-			broker.SendMessage(host, fmt.Sprint("Done!"))
-			log.Printf("'%s' unidled\n", host)
-		} else {
-			broker.SendMessage(host, fmt.Sprintf("Failed: %s", app.err))
-		}
-	}(req.Host)
+	unidler.Unidle(host)
 }
