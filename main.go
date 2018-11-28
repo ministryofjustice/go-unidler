@@ -20,7 +20,7 @@ const (
 )
 
 var (
-	broker           *Broker
+	broker           *SseBroker
 	ingressClassName string
 	k8s              UnidlerK8sClient
 	unidlerIngress   *v1beta1.Ingress
@@ -46,13 +46,7 @@ func main() {
 	}
 
 	// start a Server Side Events broker
-	broker = &Broker{
-		make(map[chan string]struct{}),
-		make(chan (chan string)),
-		make(chan (chan string)),
-		make(chan string),
-	}
-	broker.Start()
+	broker = NewSseBroker()
 
 	// get the Unidler ingress once only
 	unidlerIngress, err = k8s.Ingress(UnidlerNs, Unidler)
@@ -96,33 +90,33 @@ func unidle(w http.ResponseWriter, req *http.Request) {
 	go func(host string) {
 		log.Printf("Unidling '%s'...\n", host)
 
-	go func() {
-		app := NewApp(req.Host, k8s)
+		broker.SendMessage(host, fmt.Sprintf("Fetching app '%s'", host))
+		app := NewApp(host, k8s)
 		if app.err == nil {
-			broker.messages <- fmt.Sprintf("App '%s' found", req.Host)
+			broker.SendMessage(host, fmt.Sprintf("App '%s' found", host))
 		}
 		app.SetReplicas(1)
 		if app.err == nil {
-			broker.messages <- fmt.Sprint("Restoring replicas")
+			broker.SendMessage(host, fmt.Sprint("Restoring replicas"))
 		}
 		app.WaitForDeployment()
 		if app.err == nil {
-			broker.messages <- fmt.Sprint("Enabling ingress")
+			broker.SendMessage(host, fmt.Sprint("Enabling ingress"))
 		}
 		app.EnableIngress(ingressClassName)
 		if app.err == nil {
-			broker.messages <- fmt.Sprint("Removing from Unidler")
+			broker.SendMessage(host, fmt.Sprint("Removing from Unidler"))
 		}
 		app.RemoveFromUnidlerIngress(unidlerIngress)
 		if app.err == nil {
-			broker.messages <- fmt.Sprint("Marking as unidled")
+			broker.SendMessage(host, fmt.Sprint("Marking as unidled"))
 		}
 		app.RemoveIdledMetadata()
 		if app.err == nil {
-			broker.messages <- fmt.Sprint("Done!")
+			broker.SendMessage(host, fmt.Sprint("Done!"))
 			log.Printf("'%s' unidled\n", host)
 		} else {
-			broker.messages <- fmt.Sprintf("Failed: %s", err)
+			broker.SendMessage(host, fmt.Sprintf("Failed: %s", app.err))
 		}
 	}(req.Host)
 }

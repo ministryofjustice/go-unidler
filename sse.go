@@ -2,90 +2,132 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 )
 
-// Broker is responsible for keeping a list of which clients (browsers) are
-// currently attached and broadcasting events (messages) to those clients.
-type Broker struct {
+type (
+	Client struct {
+		channel string
+		send    chan string
+	}
 
-	// Create a map of clients, the keys of the map are the channels
-	// over which we can push messages to attached clients.  (The values
-	// are empty structs which use no memory and are unused.)
-	clients map[chan string]struct{}
+	Channel struct {
+		name        string
+		clients     map[*Client]bool
+		lastMessage string
+	}
 
-	// Channel into which new clients can be pushed
-	newClients chan chan string
+	SseBroker struct {
+		channels  map[string]*Channel
+		addClient chan *Client
+		delClient chan *Client
+	}
+)
 
-	// Channel into which disconnected clients should be pushed
-	defunctClients chan chan string
-
-	// Channel into which messages are pushed to be broadcast out
-	// to attached clients.
-	messages chan string
+func newClient(channel string) *Client {
+	return &Client{
+		channel: channel,
+		send:    make(chan string),
+	}
 }
 
-// Start is a Broker method that starts a new goroutine.  It handles
-// the addition and removal of clients, as well as the broadcasting
-// of messages out to clients that are currently attached.
-func (b *Broker) Start() {
-	go func() {
-		for {
-			// Block until we receive from one of the
-			// three following channels.
-			select {
-
-			case s := <-b.newClients:
-				b.clients[s] = struct{}{}
-
-			case s := <-b.defunctClients:
-				delete(b.clients, s)
-				close(s)
-
-			case msg := <-b.messages:
-				for s := range b.clients {
-					s <- msg
-				}
-			}
-		}
-	}()
+func newChannel(name string) *Channel {
+	return &Channel{
+		name:    name,
+		clients: make(map[*Client]bool),
+	}
 }
 
-// ServeHTTP is a Broker method that handles and HTTP request at the "/events/" URL.
-func (b *Broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (ch *Channel) sendMessage(msg string) {
+	ch.lastMessage = msg
+	for c := range ch.clients {
+		c.send <- msg
+	}
+}
 
-	f, ok := w.(http.Flusher)
+func NewSseBroker() *SseBroker {
+	s := &SseBroker{
+		make(map[string]*Channel),
+		make(chan *Client),
+		make(chan *Client),
+	}
+	go s.dispatch()
+	return s
+}
+
+func (s *SseBroker) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	flusher, ok := w.(http.Flusher)
 	if !ok {
-		http.Error(w, "Streaming not supported!", http.StatusInternalServerError)
+		http.Error(w, "Streaming not supported", http.StatusInternalServerError)
 		return
 	}
 
-	messageChan := make(chan string)
-	b.newClients <- messageChan
-
-	// Listen to the closing of the http connection via the CloseNotifier
-	notify := w.(http.CloseNotifier).CloseNotify()
-	go func() {
-		<-notify
-		// Remove this client from the map of attached clients
-		// when `EventHandler` exits.
-		b.defunctClients <- messageChan
-	}()
-
-	// Set the headers related to event streaming.
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
-	for {
-		msg, open := <-messageChan
+	c := newClient(req.Host)
+	s.addClient <- c
+	closeNotify := w.(http.CloseNotifier).CloseNotify()
 
-		if !open {
-			break
+	go func() {
+		<-closeNotify
+		s.delClient <- c
+	}()
+
+	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
+
+	for msg := range c.send {
+		fmt.Fprintf(w, "data: %s\n\n", msg)
+		flusher.Flush()
+	}
+}
+
+func (s *SseBroker) SendMessage(channel string, msg string) {
+	log.Printf("data: %s\n\n", msg)
+	if len(channel) == 0 {
+		log.Print("broadcasting message to all channels")
+		for _, ch := range s.channels {
+			ch.sendMessage(msg)
 		}
+	} else if _, ok := s.channels[channel]; ok {
+		log.Printf("message sent to channel '%s'", channel)
+		s.channels[channel].sendMessage(msg)
+	} else {
+		ch := newChannel(channel)
+		s.channels[ch.name] = ch
+		ch.lastMessage = msg
+		log.Printf("message not sent because channel '%s' has no clients", channel)
+	}
+}
 
-		fmt.Fprintf(w, "data: Message: %s\n\n", msg)
+func (s *SseBroker) dispatch() {
+	log.Print("SSE Broker started")
 
-		f.Flush()
+	for {
+		select {
+		case c := <-s.addClient:
+			ch, exists := s.channels[c.channel]
+			if !exists {
+				ch = newChannel(c.channel)
+				s.channels[ch.name] = ch
+				log.Printf("created channel '%s'", ch.name)
+			}
+			ch.clients[c] = true
+			log.Printf("added client to channel '%s'", ch.name)
+			if ch.lastMessage != "" {
+				log.Printf("sending last message in channel '%s'", ch.name)
+				c.send <- ch.lastMessage
+			}
+
+		case c := <-s.delClient:
+			if ch, exists := s.channels[c.channel]; exists {
+				close(c.send)
+				delete(ch.clients, c)
+				log.Printf("client removed from channel '%s'", ch.name)
+			}
+		}
 	}
 }

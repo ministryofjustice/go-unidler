@@ -6,15 +6,28 @@
 <body>
 
 	<h1>Unidling {{.}}</h1>
+	<ul>
+	</ul>
 
 	<script type="text/javascript">
-	    // Create a new HTML5 EventSource
-	    var source = new EventSource('/events/');
-	    // Create a callback for when a new message is received.
-	    source.onmessage = function(e) {
-	        // Append the `data` attribute of the message to the DOM.
-	        document.body.innerHTML += e.data + '<br>';
-	    };
+		var source = new EventSource('/events/');
+		var events = document.querySelector('ul');
+
+		source.onopen = function () {
+			console.log("Connection to server opened");
+		};
+
+		source.onmessage = function(e) {
+			console.log("Received message: ", e.data);
+
+			var eventItem = document.createElement("li");
+			eventItem.textContent = e.data
+			events.appendChild(eventItem);
+		};
+
+		source.onerror = function () {
+			console.log("EventSource failed.");
+		};
 	</script>
 </body>
 </html>
