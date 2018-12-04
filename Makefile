@@ -16,10 +16,10 @@ default: static
 
 dependencies:
 	@echo " > Checking dependencies..."
-	@$(GO) mod vendor
+	@GO111MODULE=on $(GO) mod vendor
 
 ## docker-image: Build docker image.
-docker-image: dependencies
+docker-image:
 	@echo " > Building Docker image..."
 	docker build ${DOCKER_BUILD_ARGS} -t "$(PROJECTNAME)" .
 
@@ -36,12 +36,12 @@ static: dependencies
 ## run: Run the unidler.
 run: static
 	@echo " > Starting unidler"
-	@$(PROJECTNAME)
+	@./$(PROJECTNAME)
 
 ## test: Run unit tests.
 test: dependencies
 	@echo " > Testing..."
-	${GO} test
+	@${GO} test
 
 # clean: Clean build files. Runs `go clean` internally.
 clean:

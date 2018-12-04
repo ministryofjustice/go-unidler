@@ -73,7 +73,7 @@ func (a *App) Unidle() (err error) {
 		return
 	}
 	a.setStatus("Ready")
-	return nil
+	return
 }
 
 func (a *App) log(msg string) {

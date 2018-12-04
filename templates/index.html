@@ -1,39 +1,47 @@
 <!DOCTYPE html>
 <html>
 <head>
-	<title>Unidling {{.}}</title>
+  <title>Unidling {{.}}</title>
 </head>
 <body>
 
-	<h1>Unidling {{.}}</h1>
-	<ul>
-	</ul>
+  <h1>Unidling {{.}}</h1>
+  <ul>
+  </ul>
 
-	<script type="text/javascript">
-		var url = '/events/';
-		var urlparams = new URLSearchParams(window.location.search);
-		var host = urlparams.get("host");
-		if (host) {
-			url += '?host=' + host;
-		}
-		var source = new EventSource(url);
-		var events = document.querySelector('ul');
+  <script type="text/javascript">
+    var url = '/events/';
+    var urlparams = new URLSearchParams(window.location.search);
+    var host = urlparams.get("host");
+    if (host) {
+      url += '?host=' + host;
+    } else {
+      host = window.location.hostname;
+    }
+    var source = new EventSource(url);
+    var events = document.querySelector('ul');
 
-		source.onopen = function () {
-			console.log("Connection to server opened");
-		};
+    source.onopen = function () {
+      console.log("Connection to server opened");
+    };
 
-		source.onmessage = function(e) {
-			console.log("Received message: ", e.data);
+    source.onmessage = function(e) {
+      console.log("Received message: ", e.data);
 
-			var eventItem = document.createElement("li");
-			eventItem.textContent = e.data
-			events.appendChild(eventItem);
-		};
+      var eventItem = document.createElement("li");
+      eventItem.textContent = e.data
+      events.appendChild(eventItem);
 
-		source.onerror = function () {
-			console.log("EventSource failed.");
-		};
-	</script>
+      if (e.data.toUpperCase() == "READY") {
+        window.setTimeout(function () {
+          window.location.href = host;
+        }, 5000);
+      }
+    };
+
+    source.onerror = function () {
+      console.log("EventSource failed.");
+    };
+  </script>
 </body>
 </html>

@@ -5,16 +5,16 @@ RUN apk update \
     && apk add --no-cache \
       ca-certificates \
       git \
-	  make \
-    && rm -rf /var/cache/apk/*
+	  make
 
 WORKDIR /go/src/github.com/ministryofjustice/go-unidler
 
-COPY vendor vendor
-COPY Makefile app.go k8s.go main.go sse.go go.mod ./
+#COPY vendor vendor
+COPY Makefile ./
+COPY *.go ./
+COPY go.mod ./
 
-# update vendored dependencies
-#RUN make vendored-packages
+ENV GO111MODULE=on
 
 # NOTE: statically compiled as final image is based on "scratch"
 RUN make static
