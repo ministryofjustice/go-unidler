@@ -22,8 +22,8 @@ const (
 var (
 	broker           *SseBroker
 	ingressClassName string
-	k8s              KubernetesWrapper
-	unidler          *Unidler
+	k8s              *KubernetesAPI
+	unidler          Unidler
 	unidlerIngress   *v1beta1.Ingress
 )
 
@@ -41,7 +41,7 @@ func main() {
 		log.Fatalf("Couldn't determine HOME directory, is $HOME set?")
 	}
 	var err error
-	k8s, err = NewK8sClient(filepath.Join(home, ".kube", "config"))
+	k8s, err = NewKubernetesAPI(filepath.Join(home, ".kube", "config"))
 	if err != nil {
 		log.Fatalf("%s", err)
 	}

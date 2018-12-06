@@ -7,6 +7,14 @@ import (
 )
 
 type (
+	// Message represents a Server Sent Event message
+	Message struct {
+		event string
+		data  string
+		id    string
+		retry int
+	}
+
 	// Client represents a connected client (browser)
 	Client struct {
 		channel string
@@ -17,7 +25,12 @@ type (
 	Channel struct {
 		name        string
 		clients     map[*Client]bool
-		lastMessage string
+		lastMessage *Message
+	}
+
+	// SseSender provides a method to send a SSE event to a specified channel
+	SseSender interface {
+		SendSse(string, *Message)
 	}
 
 	// SseBroker represents the an server with a list of channels
@@ -27,6 +40,28 @@ type (
 		delClient chan *Client
 	}
 )
+
+func (m *Message) String() string {
+	s := ""
+
+	if m.id != "" {
+		s = fmt.Sprintf("id: %s\n", m.id)
+	}
+
+	if m.event != "" {
+		s = fmt.Sprintf("%sevent: %s\n", s, m.event)
+	}
+
+	if m.retry > 0 {
+		s = fmt.Sprintf("%sretry: %d\n", s, m.retry)
+	}
+
+	if m.data != "" {
+		s = fmt.Sprintf("%sdata: %s\n", s, m.data)
+	}
+
+	return fmt.Sprintf("%s\n", s)
+}
 
 func newClient(channel string) *Client {
 	return &Client{
@@ -42,10 +77,10 @@ func newChannel(name string) *Channel {
 	}
 }
 
-func (ch *Channel) sendMessage(msg string) {
+func (ch *Channel) sendMessage(msg *Message) {
 	ch.lastMessage = msg
 	for c := range ch.clients {
-		c.send <- msg
+		c.send <- msg.String()
 	}
 }
 
@@ -96,13 +131,13 @@ func (s *SseBroker) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	flusher.Flush()
 
 	for msg := range c.send {
-		fmt.Fprintf(w, "data: %s\n\n", msg)
+		fmt.Fprintf(w, msg)
 		flusher.Flush()
 	}
 }
 
-// SendMessage broadcasts a message to a channel (or all channels)
-func (s *SseBroker) SendMessage(channel string, msg string) {
+// SendSse broadcasts a message to a channel (or all channels)
+func (s *SseBroker) SendSse(channel string, msg *Message) {
 	if channel == "" {
 		log.Printf("broadcasting message to all channels: %s", msg)
 		for _, ch := range s.channels {
@@ -133,9 +168,9 @@ func (s *SseBroker) dispatch() {
 			}
 			ch.clients[c] = true
 			log.Printf("added client to channel '%s'", ch.name)
-			if ch.lastMessage != "" {
+			if ch.lastMessage != nil {
 				log.Printf("sending last message in channel '%s'", ch.name)
-				c.send <- ch.lastMessage
+				c.send <- ch.lastMessage.String()
 			}
 
 		case c := <-s.delClient:
