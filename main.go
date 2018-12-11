@@ -8,8 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"time"
-
-	"k8s.io/api/extensions/v1beta1"
 )
 
 const (
@@ -20,11 +18,15 @@ const (
 )
 
 var (
-	sse              *SseBroker
 	ingressClassName string
-	k8s              *KubernetesAPI
 	tmpl             *template.Template
-	unidlerIngress   *v1beta1.Ingress
+)
+
+type (
+	Unidler struct {
+		k8s *KubernetesAPI
+		sse SseSender
+	}
 )
 
 func main() {
@@ -41,7 +43,7 @@ func main() {
 		log.Fatalf("Couldn't determine HOME directory, is $HOME set?")
 	}
 	var err error
-	k8s, err = NewKubernetesAPI(filepath.Join(home, ".kube", "config"))
+	k8s, err := NewKubernetesAPI(filepath.Join(home, ".kube", "config"))
 	if err != nil {
 		log.Fatalf("%s", err)
 	}
@@ -53,9 +55,14 @@ func main() {
 	}
 
 	// start a Server Side Events broker
-	sse = NewSseBroker()
+	sse := NewSseBroker()
 
-	http.HandleFunc("/", unidle)
+	u := &Unidler{
+		k8s: k8s,
+		sse: sse,
+	}
+
+	http.HandleFunc("/", u.unidle)
 	http.Handle("/events/", sse)
 	http.HandleFunc("/healthz", healthCheck)
 
@@ -74,12 +81,12 @@ func healthCheck(w http.ResponseWriter, req *http.Request) {
 	fmt.Fprint(w, "Still OK")
 }
 
-func unidle(w http.ResponseWriter, req *http.Request) {
+func (u *Unidler) unidle(w http.ResponseWriter, req *http.Request) {
 	host := getHost(req)
 	tmpl.Execute(w, host)
 
-	task := &UnidleTask{host: host}
-	go task.Run(k8s)
+	task := &UnidleTask{host: host, k8s: u.k8s, sse: u.sse}
+	go task.run()
 }
 
 func getHost(req *http.Request) string {

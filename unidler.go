@@ -10,13 +10,15 @@ type (
 	UnidleTask struct {
 		app  *App
 		host string
+		k8s  *KubernetesAPI
+		sse  SseSender
 	}
 )
 
-func (t *UnidleTask) Run(k8s *KubernetesAPI) {
+func (t *UnidleTask) run() {
 	log.Printf("Unidling '%s'...", t.host)
 
-	app, err := NewApp(t.host, k8s)
+	app, err := NewApp(t.host, t.k8s)
 	if err != nil {
 		t.Fail(err)
 		return
@@ -53,14 +55,14 @@ func (t *UnidleTask) Run(k8s *KubernetesAPI) {
 		return
 	}
 
-	sse.SendSse(t.host, &Message{
+	t.sse.SendSse(t.host, &Message{
 		event: "success",
 		data:  "Ready",
 	})
 }
 
 func (t *UnidleTask) sendStatus(data string) {
-	sse.SendSse(t.host, &Message{data: data})
+	t.sse.SendSse(t.host, &Message{data: data})
 }
 
 // Fail ends the task with a failure status
@@ -70,5 +72,5 @@ func (t *UnidleTask) Fail(err error) {
 		data:  fmt.Sprintf("%s", err),
 	}
 	log.Print(msg.data)
-	sse.SendSse(t.host, msg)
+	t.sse.SendSse(t.host, msg)
 }

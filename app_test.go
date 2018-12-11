@@ -1,7 +1,6 @@
 package main
 
 import (
-	"log"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -32,7 +31,7 @@ func TestJsonPatchEscape(t *testing.T) {
 	}
 }
 
-func IdledDeployment(client kubernetes.Interface, ns string, name string, annotations map[string]string, labels map[string]string) *v1.Deployment {
+func MockDeployment(client kubernetes.Interface, ns string, name string, annotations map[string]string, labels map[string]string) *v1.Deployment {
 	var replicas int32
 	labels["app"] = name
 	dep, _ := client.Apps().Deployments(ns).Create(&v1.Deployment{
@@ -70,6 +69,16 @@ func MockIngress(client kubernetes.Interface, ns string, name string, host strin
 	return ing
 }
 
+func IdledDeployment(client kubernetes.Interface, ns string, name string) *v1.Deployment {
+	annotations := map[string]string{
+		IdledAtAnnotation: "2018-12-10T12:34:56Z,1",
+	}
+	labels := map[string]string{
+		IdledLabel: "true",
+	}
+	return MockDeployment(client, ns, name, annotations, labels)
+}
+
 func TestUnidleApp(t *testing.T) {
 	client := testclient.NewSimpleClientset()
 	api := &KubernetesAPI{
@@ -79,17 +88,11 @@ func TestUnidleApp(t *testing.T) {
 	host := "test.example.com"
 	ns := "test-ns"
 	name := "test"
-	var expectedReplicas int32 = 1
 
 	// setup mock kubernetes resources
 	// app deployment
-	annotations := map[string]string{
-		IdledAtAnnotation: "2018-12-10T12:34:56Z,1",
-	}
-	labels := map[string]string{
-		IdledLabel: "true",
-	}
-	dep := IdledDeployment(client, ns, name, annotations, labels)
+	dep := IdledDeployment(client, ns, name)
+
 	// app ingress
 	ing := MockIngress(client, ns, name, host)
 
@@ -97,6 +100,7 @@ func TestUnidleApp(t *testing.T) {
 	assert.Equal(t, ing, app.ingress)
 	assert.Equal(t, dep, app.deployment)
 
+	var expectedReplicas int32 = 1
 	err := app.SetReplicas(1)
 	assert.Nil(t, err)
 	assert.Equal(t, expectedReplicas, *app.deployment.Spec.Replicas)
@@ -105,28 +109,25 @@ func TestUnidleApp(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, "nginx", app.ingress.Annotations["kubernetes.io/ingress.class"])
 
-	// unidler ingress
+	// setup unidler ingress
 	MockIngress(client, UnidlerNs, UnidlerName, host)
-
 	err = app.RemoveFromUnidlerIngress()
 	assert.Nil(t, err)
-	unidlerIngress, _ := client.ExtensionsV1beta1().Ingresses(UnidlerNs).Get(UnidlerName, metav1.GetOptions{})
-	count := 0
-	for _, r := range unidlerIngress.Spec.Rules {
-		if r.Host == host {
-			count++
-		}
-	}
-	assert.Equal(t, 0, count)
+	assert.Equal(t, false, ingressRuleExists(host, api))
 
 	err = app.RemoveIdledMetadata()
 	assert.Nil(t, err)
 
-	dep, _ = client.Apps().Deployments(ns).Get(name, metav1.GetOptions{})
-	l, labelExists := dep.Labels[IdledLabel]
-	log.Print(l)
-	a, annotationExists := dep.Annotations[IdledAtAnnotation]
-	log.Print(a)
+	dep, _ = api.Deployment(ing)
+	_, labelExists := dep.Labels[IdledLabel]
+	_, annotationExists := dep.Annotations[IdledAtAnnotation]
 	assert.False(t, labelExists, "Idled label not removed")
 	assert.False(t, annotationExists, "Idled annotation not removed")
+	assert.Equal(t, expectedReplicas, *dep.Spec.Replicas)
+}
+
+func ingressRuleExists(host string, api *KubernetesAPI) bool {
+	ing, _ := api.Ingress(UnidlerNs, UnidlerName)
+	_, found := removeHostRule(host, ing.Spec.Rules)
+	return found
 }

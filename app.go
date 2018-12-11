@@ -61,11 +61,10 @@ func (a *App) SetReplicas(replicas int32) error {
 
 	if current != replicas {
 		a.deployment.Spec.Replicas = &replicas
-		updated, err := a.k8s.UpdateDeployment(a.deployment)
+		_, err := a.k8s.UpdateDeployment(a.deployment)
 		if err != nil {
 			return fmt.Errorf("failed setting replicas to %d: %s", replicas, err)
 		}
-		a.deployment = updated
 
 		a.log(fmt.Sprintf("Deployment replicas changed to %d", replicas))
 	} else {
@@ -86,11 +85,10 @@ func (a *App) EnableIngress(ingressClassName string) error {
 
 	if current != ingressClassName {
 		a.ingress.Annotations[ingressClass] = ingressClassName
-		updated, err := a.k8s.UpdateIngress(a.ingress)
+		_, err := a.k8s.UpdateIngress(a.ingress)
 		if err != nil {
 			return fmt.Errorf("failed enabling ingress: %s", err)
 		}
-		a.ingress = updated
 
 		a.log("Ingress is now enabled")
 	} else {
@@ -102,25 +100,17 @@ func (a *App) EnableIngress(ingressClassName string) error {
 // RemoveFromUnidlerIngress removes the App's hostname from the Unidler Ingress,
 // preventing further requests from being handled by the Unidler
 func (a *App) RemoveFromUnidlerIngress() error {
-	unidlerIngress, err := a.k8s.Ingress(UnidlerNs, UnidlerName)
+	ing, err := a.k8s.Ingress(UnidlerNs, UnidlerName)
 	if err != nil {
 		return fmt.Errorf("couldn't find unidler ingress: %s", err)
 	}
 
 	// Remove rule for App's host
-	newRules := []v1beta1.IngressRule{}
-	found := false
-	for _, rule := range unidlerIngress.Spec.Rules {
-		if rule.Host != a.host {
-			newRules = append(newRules, rule)
-		} else {
-			found = true
-		}
-	}
-	unidlerIngress.Spec.Rules = newRules
+	var found bool
+	ing.Spec.Rules, found = removeHostRule(a.host, ing.Spec.Rules)
 
 	if found {
-		_, err := a.k8s.UpdateIngress(unidlerIngress)
+		_, err := a.k8s.UpdateIngress(ing)
 		if err != nil {
 			return fmt.Errorf("failed updating unidler ingress rules: %s", err)
 		}
@@ -132,6 +122,19 @@ func (a *App) RemoveFromUnidlerIngress() error {
 	return nil
 }
 
+func removeHostRule(host string, rules []v1beta1.IngressRule) ([]v1beta1.IngressRule, bool) {
+	newRules := []v1beta1.IngressRule{}
+	found := false
+	for _, rule := range rules {
+		if rule.Host != host {
+			newRules = append(newRules, rule)
+		} else {
+			found = true
+		}
+	}
+	return newRules, found
+}
+
 // RemoveIdledMetadata removes the App's label and annotation which indicate its
 // idled status, marking it as no longer idled
 func (a *App) RemoveIdledMetadata() error {
@@ -139,17 +142,20 @@ func (a *App) RemoveIdledMetadata() error {
 	_, annotationExists := a.deployment.Annotations[IdledAtAnnotation]
 
 	if labelExists || annotationExists {
-		patch := fmt.Sprintf(`[
-			{"op": "remove", "path": "/metadata/labels/%s"},
-			{"op": "remove", "path": "/metadata/annotations/%s"}
-		]`, jsonPatchEscape(IdledLabel), jsonPatchEscape(IdledAtAnnotation))
-		updated, err := a.k8s.PatchDeployment(a.deployment, patch)
+		delete(a.deployment.Annotations, IdledAtAnnotation)
+		delete(a.deployment.Labels, IdledLabel)
+		_, err := a.k8s.UpdateDeployment(a.deployment)
 		if err != nil {
+			if strings.Contains(err.Error(), "object has been modified") {
+				dep, err := a.k8s.Deployment(a.ingress)
+				if err == nil {
+					a.deployment = dep
+					return a.RemoveIdledMetadata()
+				}
+			}
+
 			return fmt.Errorf("failed removing idled label/annotation: %s", err)
 		}
-		a.deployment = updated
-		log.Print(updated.Annotations[IdledAtAnnotation])
-		log.Print(updated.Labels[IdledLabel])
 
 		a.log("Removed idled label/annotation from deployment")
 	} else {

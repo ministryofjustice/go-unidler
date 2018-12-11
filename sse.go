@@ -97,8 +97,6 @@ func NewSseBroker() *SseBroker {
 
 // ServeHTTP receives HTTP requests from browsers and sends back SSEs
 func (s *SseBroker) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	log.Printf("HTTP request received for %s", req.URL.Path)
-
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "Streaming not supported", http.StatusInternalServerError)
@@ -117,14 +115,12 @@ func (s *SseBroker) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 	c := newClient(host)
 	s.addClient <- c
-	log.Printf("client '%v' created", c)
 
 	// remove the client if it closes the HTTP request
 	closeNotify := w.(http.CloseNotifier).CloseNotify()
 	go func() {
 		<-closeNotify
 		s.delClient <- c
-		log.Printf("client '%v' closed request", c)
 	}()
 
 	w.WriteHeader(http.StatusOK)
@@ -139,18 +135,15 @@ func (s *SseBroker) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 // SendSse broadcasts a message to a channel (or all channels)
 func (s *SseBroker) SendSse(channel string, msg *Message) {
 	if channel == "" {
-		log.Printf("broadcasting message to all channels: %s", msg)
 		for _, ch := range s.channels {
 			ch.sendMessage(msg)
 		}
 	} else if _, ok := s.channels[channel]; ok {
-		log.Printf("message sent to channel '%s': %s", channel, msg)
 		s.channels[channel].sendMessage(msg)
 	} else {
 		ch := newChannel(channel)
 		s.channels[ch.name] = ch
 		ch.lastMessage = msg
-		log.Printf("message not sent because channel '%s' has no clients: %s", channel, msg)
 	}
 }
 
@@ -164,12 +157,9 @@ func (s *SseBroker) dispatch() {
 			if !exists {
 				ch = newChannel(c.channel)
 				s.channels[ch.name] = ch
-				log.Printf("created channel '%s'", ch.name)
 			}
 			ch.clients[c] = true
-			log.Printf("added client to channel '%s'", ch.name)
 			if ch.lastMessage != nil {
-				log.Printf("sending last message in channel '%s'", ch.name)
 				c.send <- ch.lastMessage.String()
 			}
 
@@ -177,7 +167,6 @@ func (s *SseBroker) dispatch() {
 			if ch, exists := s.channels[c.channel]; exists {
 				close(c.send)
 				delete(ch.clients, c)
-				log.Printf("client removed from channel '%s'", ch.name)
 			}
 		}
 	}
