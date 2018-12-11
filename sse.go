@@ -87,9 +87,9 @@ func (ch *Channel) sendMessage(msg *Message) {
 // NewSseBroker constructs a new SSE server and starts it running
 func NewSseBroker() *SseBroker {
 	s := &SseBroker{
-		make(map[string]*Channel),
-		make(chan *Client),
-		make(chan *Client),
+		channels:  make(map[string]*Channel),
+		addClient: make(chan *Client),
+		delClient: make(chan *Client),
 	}
 	go s.dispatch()
 	return s

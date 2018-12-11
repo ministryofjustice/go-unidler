@@ -23,13 +23,11 @@ type (
 	// deployment, with a corresponding hostname and ingress
 	App struct {
 		deployment *v1.Deployment
-		err        chan error
 		host       string
 		ingress    *v1beta1.Ingress
 		k8s        *KubernetesAPI
 		name       string
 		namespace  string
-		status     chan string
 	}
 )
 
@@ -37,10 +35,8 @@ type (
 // and deployment
 func NewApp(host string, k8s *KubernetesAPI) (app *App, err error) {
 	app = &App{
-		err:    make(chan error),
-		host:   host,
-		k8s:    k8s,
-		status: make(chan string),
+		host: host,
+		k8s:  k8s,
 	}
 	app.ingress, err = k8s.IngressForHost(host)
 	if err != nil {
@@ -55,34 +51,6 @@ func NewApp(host string, k8s *KubernetesAPI) (app *App, err error) {
 	return app, nil
 }
 
-// Unidle performs the actions to unidle an app
-func (a *App) Unidle() (err error) {
-	a.status <- "Pending"
-
-	if err = a.SetReplicas(1); err != nil {
-		a.err <- err
-		return
-	}
-	if err = a.WaitForDeployment(); err != nil {
-		a.err <- err
-		return
-	}
-	if err = a.EnableIngress(ingressClassName); err != nil {
-		a.err <- err
-		return
-	}
-	if err = a.RemoveFromUnidlerIngress(); err != nil {
-		a.err <- err
-		return
-	}
-	if err = a.RemoveIdledMetadata(); err != nil {
-		a.err <- err
-		return
-	}
-	a.status <- "Ready"
-	return
-}
-
 func (a *App) log(msg string) {
 	log.Printf("Unidling '%s' (ns: '%s'): %s", a.name, a.namespace, msg)
 }
@@ -92,13 +60,12 @@ func (a *App) SetReplicas(replicas int32) error {
 	current := *a.deployment.Spec.Replicas
 
 	if current != replicas {
-		a.status <- "Restoring replicas"
-
 		a.deployment.Spec.Replicas = &replicas
-		_, err := a.k8s.UpdateDeployment(a.deployment)
+		updated, err := a.k8s.UpdateDeployment(a.deployment)
 		if err != nil {
 			return fmt.Errorf("failed setting replicas to %d: %s", replicas, err)
 		}
+		a.deployment = updated
 
 		a.log(fmt.Sprintf("Deployment replicas changed to %d", replicas))
 	} else {
@@ -118,12 +85,12 @@ func (a *App) EnableIngress(ingressClassName string) error {
 	current := a.ingress.Annotations[ingressClass]
 
 	if current != ingressClassName {
-
-		a.status <- "Enabling ingress"
 		a.ingress.Annotations[ingressClass] = ingressClassName
-		if _, err := a.k8s.UpdateIngress(a.ingress); err != nil {
+		updated, err := a.k8s.UpdateIngress(a.ingress)
+		if err != nil {
 			return fmt.Errorf("failed enabling ingress: %s", err)
 		}
+		a.ingress = updated
 
 		a.log("Ingress is now enabled")
 	} else {
@@ -153,9 +120,8 @@ func (a *App) RemoveFromUnidlerIngress() error {
 	unidlerIngress.Spec.Rules = newRules
 
 	if found {
-		a.status <- "Removing from Unidler"
-
-		if _, err := a.k8s.UpdateIngress(unidlerIngress); err != nil {
+		_, err := a.k8s.UpdateIngress(unidlerIngress)
+		if err != nil {
 			return fmt.Errorf("failed updating unidler ingress rules: %s", err)
 		}
 
@@ -173,15 +139,17 @@ func (a *App) RemoveIdledMetadata() error {
 	_, annotationExists := a.deployment.Annotations[IdledAtAnnotation]
 
 	if labelExists || annotationExists {
-		a.status <- "Marking as unidled"
-
 		patch := fmt.Sprintf(`[
 			{"op": "remove", "path": "/metadata/labels/%s"},
 			{"op": "remove", "path": "/metadata/annotations/%s"}
 		]`, jsonPatchEscape(IdledLabel), jsonPatchEscape(IdledAtAnnotation))
-		if _, err := a.k8s.PatchDeployment(a.deployment, patch); err != nil {
+		updated, err := a.k8s.PatchDeployment(a.deployment, patch)
+		if err != nil {
 			return fmt.Errorf("failed removing idled label/annotation: %s", err)
 		}
+		a.deployment = updated
+		log.Print(updated.Annotations[IdledAtAnnotation])
+		log.Print(updated.Labels[IdledLabel])
 
 		a.log("Removed idled label/annotation from deployment")
 	} else {

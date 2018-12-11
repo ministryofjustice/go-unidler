@@ -1,13 +1,4 @@
 PROJECTNAME := $(shell basename "$(PWD)")
-
-GOBASE := $(shell pwd)
-#GOPATH := $(GOBASE)/vendor:$(GOBASE)
-GOBIN := $(GOBASE)/bin
-GOFILES := $(wildcard *.go)
-
-STDERR := /tmp/.$(PROJECTNAME)-stderr.txt
-PID := /tmp/.$(PROJECTNAME).pid
-
 PORT := 8000
 GO := CGO_ENABLED=0 go
 
@@ -41,15 +32,12 @@ run: static
 ## test: Run unit tests.
 test: dependencies
 	@echo " > Testing..."
-	@${GO} test
+	@${GO} test -v
 
 # clean: Clean build files. Runs `go clean` internally.
 clean:
 	@echo " > Cleaning build cache"
 	@$(GO) clean
-
-go-install:
-	@$(GO) install $(GOFILES)
 
 .PHONY: help
 all: help

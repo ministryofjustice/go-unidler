@@ -4,7 +4,6 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"k8s.io/api/apps/v1"
 	"k8s.io/api/extensions/v1beta1"
@@ -51,7 +50,7 @@ func TestUnidleTask(t *testing.T) {
 	sse.On("SendSse", mock.Anything, mock.Anything).Return()
 
 	client := testclient.NewSimpleClientset()
-	api := &KubernetesAPI{
+	k8s = &KubernetesAPI{
 		client: client,
 	}
 
@@ -79,28 +78,11 @@ func TestUnidleTask(t *testing.T) {
 		},
 	})
 
-	app, err := NewApp(host, api)
-	assert.Nil(t, err)
-	task := &UnidleTask{app, host, sse, unidler}
+	task := &UnidleTask{host: host}
 
-	task.End()
-	unidler.AssertCalled(t, "EndTask", task)
-
-	task = &UnidleTask{app, host, sse, unidler}
 	task.Fail(errors.New("test-error"))
 	sse.AssertCalled(t, "SendSse", host, &Message{
 		event: "error",
 		data:  "test-error",
 	})
-	unidler.AssertCalled(t, "EndTask", task)
-}
-
-func TestUnidler(t *testing.T) {
-	client := testclient.NewSimpleClientset()
-	api := &KubernetesAPI{
-		client: client,
-	}
-	sse := new(MockSseSender)
-	unidler := NewUnidler("test-ns", "test", api, sse)
-	assert.NotNil(t, unidler)
 }

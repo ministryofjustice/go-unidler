@@ -85,6 +85,7 @@ func (k KubernetesAPI) IngressForHost(host string) (*v1beta1.Ingress, error) {
 	for _, ing := range ingresses.Items {
 		// XXX assumes the ingress has only one rule
 		if ing.Spec.Rules[0].Host == host {
+			log.Printf("Ingress for '%s' found: %s (ns: %s)", host, ing.Name, ing.Namespace)
 			return &ing, nil
 		}
 	}

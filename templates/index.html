@@ -124,8 +124,6 @@
   var host = urlparams.get("host");
   if (host) {
     url += '?host=' + host;
-  } else {
-    host = "{{.}}";
   }
   var source = new EventSource(url);
 
