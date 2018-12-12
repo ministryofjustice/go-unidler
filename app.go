@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 
 	"k8s.io/api/apps/v1"
@@ -40,25 +41,35 @@ func NewApp(host string, k8s *KubernetesAPI) (app *App, err error) {
 	}
 	app.ingress, err = k8s.IngressForHost(host)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed getting app: %s", err)
 	}
 	app.name = app.ingress.Name
 	app.namespace = app.ingress.Namespace
 	app.deployment, err = k8s.Deployment(app.ingress)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed getting app: %s", err)
 	}
 	return app, nil
 }
 
 func (a *App) log(msg string) {
+	log.SetPrefix("app ")
 	log.Printf("Unidling '%s' (ns: '%s'): %s", a.name, a.namespace, msg)
 }
 
 // SetReplicas updates an App's number of replicas to the specified number
-func (a *App) SetReplicas(replicas int32) error {
+func (a *App) SetReplicas() error {
 	current := *a.deployment.Spec.Replicas
+	restore, err := strconv.ParseInt(
+		strings.Split(a.deployment.Annotations[IdledAtAnnotation], ",")[1],
+		10,
+		32,
+	)
+	if err != nil {
+		return fmt.Errorf("failed parsing number of replicas to restore: %s", err)
+	}
 
+	replicas := int32(restore)
 	if current != replicas {
 		a.deployment.Spec.Replicas = &replicas
 		_, err := a.k8s.UpdateDeployment(a.deployment)
@@ -138,6 +149,13 @@ func removeHostRule(host string, rules []v1beta1.IngressRule) ([]v1beta1.Ingress
 // RemoveIdledMetadata removes the App's label and annotation which indicate its
 // idled status, marking it as no longer idled
 func (a *App) RemoveIdledMetadata() error {
+	// re-retrieve the deployment to avoid "object has been modified" error
+	var err error
+	a.deployment, err = a.k8s.Deployment(a.ingress)
+	if err != nil {
+		return fmt.Errorf("failed removing idled metadata: %s", err)
+	}
+
 	_, labelExists := a.deployment.Labels[IdledLabel]
 	_, annotationExists := a.deployment.Annotations[IdledAtAnnotation]
 
@@ -146,15 +164,7 @@ func (a *App) RemoveIdledMetadata() error {
 		delete(a.deployment.Labels, IdledLabel)
 		_, err := a.k8s.UpdateDeployment(a.deployment)
 		if err != nil {
-			if strings.Contains(err.Error(), "object has been modified") {
-				dep, err := a.k8s.Deployment(a.ingress)
-				if err == nil {
-					a.deployment = dep
-					return a.RemoveIdledMetadata()
-				}
-			}
-
-			return fmt.Errorf("failed removing idled label/annotation: %s", err)
+			return fmt.Errorf("failed removing idled metadata: %s", err)
 		}
 
 		a.log("Removed idled label/annotation from deployment")
@@ -175,13 +185,13 @@ func jsonPatchEscape(s string) string {
 func (a *App) WaitForDeployment() error {
 	w, err := a.k8s.WatchDeployment(a.deployment)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed watching deployment: %s", err)
 	}
 
 	for event := range w.ResultChan() {
 		dep, ok := event.Object.(*v1.Deployment)
 		if !ok {
-			return fmt.Errorf("unexpected event type: %+v", event.Object)
+			return fmt.Errorf("failed watching deployment: unexpected event type: %+v", event.Object)
 		}
 
 		if dep.Status.AvailableReplicas > 0 {

@@ -9,22 +9,22 @@ import (
 )
 
 type (
-	MockSseSender struct {
+	MockSSESender struct {
 		mock.Mock
 	}
 )
 
-func (s *MockSseSender) SendSse(host string, msg *Message) {
-	s.Called(host, msg)
+func (s *MockSSESender) SendSSE(msg *Message) {
+	s.Called(msg)
 }
 
-func TestUnidleTask(t *testing.T) {
+func TestUnidler(t *testing.T) {
 	ns := "test-ns"
 	name := "test"
 	host := "test.example.com"
 
-	sse := new(MockSseSender)
-	sse.On("SendSse", mock.Anything, mock.Anything).Return()
+	sse := new(MockSSESender)
+	sse.On("SendSSE", mock.Anything).Return()
 
 	client := testclient.NewSimpleClientset()
 	k8s := &KubernetesAPI{
@@ -34,10 +34,10 @@ func TestUnidleTask(t *testing.T) {
 	IdledDeployment(client, ns, name)
 	MockIngress(client, ns, name, host)
 
-	task := &UnidleTask{host: host, k8s: k8s, sse: sse}
+	u := &Unidler{host: host, k8s: k8s, sse: sse}
 
-	task.Fail(errors.New("test-error"))
-	sse.AssertCalled(t, "SendSse", host, &Message{
+	u.Fail(errors.New("test-error"))
+	sse.AssertCalled(t, "SendSSE", &Message{
 		event: "error",
 		data:  "test-error",
 	})

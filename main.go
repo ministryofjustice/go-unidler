@@ -17,24 +17,12 @@ const (
 	UnidlerNs = "default"
 )
 
-var (
-	ingressClassName string
-	tmpl             *template.Template
-)
-
-type (
-	Unidler struct {
-		k8s *KubernetesAPI
-		sse SseSender
-	}
-)
-
 func main() {
 	port, ok := os.LookupEnv("PORT")
 	if !ok {
 		port = ":8080"
 	}
-	ingressClassName, ok = os.LookupEnv("INGRESS_CLASS_NAME")
+	ingressClassName, ok := os.LookupEnv("INGRESS_CLASS_NAME")
 	if !ok {
 		ingressClassName = "nginx"
 	}
@@ -49,17 +37,19 @@ func main() {
 	}
 
 	// parse HTML template
-	tmpl, err = template.ParseFiles("templates/index.html")
+	tmpl, err := template.ParseFiles("templates/index.html")
 	if err != nil {
 		log.Fatalf("Error parsing template: %s", err)
 	}
 
 	// start a Server Side Events broker
-	sse := NewSseBroker()
+	sse := NewSSEBroker()
 
 	u := &Unidler{
-		k8s: k8s,
-		sse: sse,
+		ingressClassName: ingressClassName,
+		k8s:              k8s,
+		sse:              sse,
+		tmpl:             tmpl,
 	}
 
 	http.HandleFunc("/", u.unidle)
@@ -77,16 +67,13 @@ func main() {
 }
 
 func healthCheck(w http.ResponseWriter, req *http.Request) {
-	log.Printf("HTTP request received for %s", req.URL.Path)
 	fmt.Fprint(w, "Still OK")
 }
 
 func (u *Unidler) unidle(w http.ResponseWriter, req *http.Request) {
-	host := getHost(req)
-	tmpl.Execute(w, host)
-
-	task := &UnidleTask{host: host, k8s: u.k8s, sse: u.sse}
-	go task.run()
+	u.host = getHost(req)
+	u.tmpl.Execute(w, u.host)
+	go u.Run()
 }
 
 func getHost(req *http.Request) string {

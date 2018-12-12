@@ -15,21 +15,21 @@ func TestMessageString(t *testing.T) {
 			Message{
 				data: "foo",
 			},
-			"data: foo\n\n",
+			"id: \nretry: 0\nevent: \ndata: foo\n\n",
 		},
 		{
 			Message{
 				event: "error",
 				data:  "foo",
 			},
-			"event: error\ndata: foo\n\n",
+			"id: \nretry: 0\nevent: error\ndata: foo\n\n",
 		},
 		{
 			Message{
 				id:   "1",
 				data: "foo",
 			},
-			"id: 1\ndata: foo\n\n",
+			"id: 1\nretry: 0\nevent: \ndata: foo\n\n",
 		},
 		{
 			Message{
@@ -38,7 +38,7 @@ func TestMessageString(t *testing.T) {
 				event: "error",
 				data:  "foo",
 			},
-			"id: 1\nevent: error\nretry: 2\ndata: foo\n\n",
+			"id: 1\nretry: 2\nevent: error\ndata: foo\n\n",
 		},
 	}
 

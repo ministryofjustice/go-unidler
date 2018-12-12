@@ -101,7 +101,7 @@ func TestUnidleApp(t *testing.T) {
 	assert.Equal(t, dep, app.deployment)
 
 	var expectedReplicas int32 = 1
-	err := app.SetReplicas(1)
+	err := app.SetReplicas()
 	assert.Nil(t, err)
 	assert.Equal(t, expectedReplicas, *app.deployment.Spec.Replicas)
 
