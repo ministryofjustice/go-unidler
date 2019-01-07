@@ -20,7 +20,7 @@ docker-run: docker-image
 	docker run -e PORT=":${PORT}" -v ${HOME}/.kube:/.kube -p ${PORT}:${PORT} "${PROJECTNAME}"
 
 ## static: Build static binary.
-static: dependencies
+static:
 	@echo " > Building binary..."
 	@${GO} build -a -installsuffix cgo -ldflags '-extldflags "-static"' -o ${PROJECTNAME} .
 

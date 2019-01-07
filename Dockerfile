@@ -9,12 +9,12 @@ RUN apk update \
 
 WORKDIR /go/src/github.com/ministryofjustice/go-unidler
 
-#COPY vendor vendor
+COPY vendor vendor
 COPY Makefile ./
 COPY *.go ./
 COPY go.mod ./
 
-ENV GO111MODULE=on
+#ENV GO111MODULE=on
 
 # NOTE: statically compiled as final image is based on "scratch"
 RUN make static
