@@ -92,6 +92,13 @@ func (a *App) EnableIngress(ingressClassName string) error {
 		ingressClassName = "nginx"
 	}
 
+	// re-retrieve the ingress to avoid "object has been modified" error
+	var err error
+	a.ingress, err = a.k8s.IngressForHost(a.host)
+	if err != nil {
+		return fmt.Errorf("failed getting app ingress: %s", err)
+	}
+
 	current := a.ingress.Annotations[ingressClass]
 
 	if current != ingressClassName {
