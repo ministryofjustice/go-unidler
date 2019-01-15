@@ -1,0 +1,95 @@
+{{define "base"}}
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Language" content="en">
+    <title>
+      Unidling, please wait &hellip; | Analytical Platform Control Panel
+    </title>
+
+    <style>
+.hidden {
+  display: none;
+}
+    </style>
+
+    <!--[if gt IE 8]><!--><link href="https://cpanel-master.services.alpha.mojanalytics.xyz/static/stylesheets/govuk-template.css?0.22.1" media="screen" rel="stylesheet"><!--<![endif]-->
+    <!--[if IE 6]><link href="https://cpanel-master.services.alpha.mojanalytics.xyz/static/stylesheets/govuk-template-ie6.css?0.22.1" media="screen" rel="stylesheet" /><![endif]-->
+    <!--[if IE 7]><link href="https://cpanel-master.services.alpha.mojanalytics.xyz/static/stylesheets/govuk-template-ie7.css?0.22.1" media="screen" rel="stylesheet" /><![endif]-->
+    <!--[if IE 8]><link href="https://cpanel-master.services.alpha.mojanalytics.xyz/static/stylesheets/govuk-template-ie8.css?0.22.1" media="screen" rel="stylesheet" /><![endif]-->
+    <link href="https://cpanel-master.services.alpha.mojanalytics.xyz/static/stylesheets/govuk-template-print.css?0.22.1" media="print" rel="stylesheet">
+
+    <!--[if IE 8]><link href="https://cpanel-master.services.alpha.mojanalytics.xyz/static/stylesheets/fonts-ie8.css?0.22.1" media="all" rel="stylesheet" /><![endif]-->
+    <!--[if gte IE 9]><!--><link href="https://cpanel-master.services.alpha.mojanalytics.xyz/static/stylesheets/fonts.css?0.22.1" media="all" rel="stylesheet"><!--<![endif]-->
+    <!--[if lt IE 9]><script src="https://cpanel-master.services.alpha.mojanalytics.xyz/static/javascripts/ie.js?0.22.1"></script><![endif]-->
+
+    <link rel="shortcut icon" href="https://cpanel-master.services.alpha.mojanalytics.xyz/static/images/favicon.ico?0.22.1" type="image/x-icon">
+
+    <link rel="mask-icon" href="https://cpanel-master.services.alpha.mojanalytics.xyz/static/images/gov.uk_logotype_crown.svg?0.22.1" color="#0b0c0c">
+    <link rel="apple-touch-icon" sizes="180x180" href="https://cpanel-master.services.alpha.mojanalytics.xyz/static/images/apple-touch-icon-180x180.png?0.22.1">
+    <link rel="apple-touch-icon" sizes="167x167" href="https://cpanel-master.services.alpha.mojanalytics.xyz/static/images/apple-touch-icon-167x167.png?0.22.1">
+    <link rel="apple-touch-icon" sizes="152x152" href="https://cpanel-master.services.alpha.mojanalytics.xyz/static/images/apple-touch-icon-152x152.png?0.22.1">
+    <link rel="apple-touch-icon" href="https://cpanel-master.services.alpha.mojanalytics.xyz/static/images/apple-touch-icon.png?0.22.1">
+
+
+    <meta name="theme-color" content="#0b0c0c">
+
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta property="og:image" content="https://cpanel-master.services.alpha.mojanalytics.xyz/static/images/opengraph-image.png?0.22.1">
+
+
+    <meta name="whats-new-hash" content="&quot;7d0bacf60d36c15fda18884da68f34d27e1d60e0&quot;">
+    <link rel="stylesheet" href="https://cpanel-master.services.alpha.mojanalytics.xyz/static/jquery.typeahead.min.css" type="text/css">
+    <link rel="stylesheet" href="https://cpanel-master.services.alpha.mojanalytics.xyz/static/jquery.modal.min.css" type="text/css">
+    <!--[if lte IE 8]><link href="https://cpanel-master.services.alpha.mojanalytics.xyz/static/stylesheets/application-ie8.css" rel="stylesheet" type="text/css" /><![endif]-->
+    <!--[if gt IE 8]><!--><link href="https://cpanel-master.services.alpha.mojanalytics.xyz/static/stylesheets/app.css" media="screen" rel="stylesheet" type="text/css"><!--<![endif]-->
+  </head>
+  <body>
+    <header role="banner" id="global-header" class="with-proposition">
+      <div class="header-wrapper">
+        <div class="header-global">
+          <div class="header-logo">
+            <a href="https://www.gov.uk" title="Go to the GOV.UK homepage" id="logo" class="content"><img src="https://cpanel-master.services.alpha.mojanalytics.xyz/static/images/gov.uk_logotype_crown_invert_trans.png?0.22.1" width="36" height="32" alt=""> GOV.UK</a>
+          </div>
+        </div>
+        <div class="header-proposition">
+          <div class="content">
+            <nav id="proposition-menu">
+              <a href="/" id="proposition-name">
+                Analytical Platform Control Panel
+              </a>
+            </nav>
+          </div>
+        </div>
+      </div>
+    </header>
+    <div id="global-header-bar"></div>
+		{{template "content" .}}
+    <footer class="group js-footer" id="footer" role="contentinfo">
+      <div class="footer-wrapper">
+        <div class="footer-meta">
+          <div class="footer-meta-inner">
+            <ul>
+              <li><a href="https://moj-analytical-services.github.io/platform_user_guidance/">Platform user guidance</a></li>
+              <li><a href="https://moj-analytical-services.github.io/platform_user_guidance/how-to-get-support.html">Platform support</a></li>
+              <li><a href="https://asdslack.slack.com/messages/C1PUCG719/#">R Slack channel</a></li>
+              <li><a href="https://asdslack.slack.com/messages/C1Q09V86S/#">Python slack channel</a></li>
+              <li><a href="https://asdslack.slack.com/messages/C4PF7QAJZ#">Analytical platform slack channel</a></li>
+              <li><a href="/whats-new">What's new?</a></li>
+            </ul>
+            <div class="open-government-licence">
+              <p class="logo"><a href="https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/" rel="license">Open Government Licence</a></p>
+              <p>All content is available under the <a href="https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/" rel="license">Open Government Licence v3.0</a>, except where otherwise stated</p>
+            </div>
+          </div>
+          <div class="copyright">
+            <a href="https://www.nationalarchives.gov.uk/information-management/re-using-public-sector-information/copyright-and-re-use/crown-copyright/">© Crown copyright</a>
+          </div>
+        </div>
+      </div>
+    </footer>
+		<script type="text/javascript">{{template "javascript" .}}</script>
+  </body>
+</html>
+{{end}}

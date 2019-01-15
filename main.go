@@ -41,7 +41,12 @@ func main() {
 	}
 
 	// parse HTML template
-	tmpl, err := template.ParseFiles("templates/index.html")
+	tmpl, err := template.New("").ParseFiles(
+		"templates/index.html",
+		"templates/index.js",
+		"templates/throbber.html",
+		"templates/base.html",
+	)
 	if err != nil {
 		logger.Fatalf("Error parsing template: %s", err)
 	}
@@ -76,7 +81,7 @@ func healthCheck(w http.ResponseWriter, req *http.Request) {
 
 func (u *Unidler) unidle(w http.ResponseWriter, req *http.Request) {
 	u.host = getHost(req)
-	u.tmpl.Execute(w, u.host)
+	u.tmpl.ExecuteTemplate(w, "base", u.host)
 	go u.Run()
 }
 
