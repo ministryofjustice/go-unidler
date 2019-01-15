@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
 
 	"k8s.io/api/apps/v1"
 	"k8s.io/api/extensions/v1beta1"
@@ -20,6 +21,7 @@ type (
 	KubernetesAPI struct {
 		client kubernetes.Interface
 		config *rest.Config
+		log    *log.Logger
 	}
 )
 
@@ -32,6 +34,7 @@ func NewKubernetesAPI(path string) (k *KubernetesAPI, err error) {
 	if k.client, err = kubernetes.NewForConfig(k.config); err != nil {
 		return nil, fmt.Errorf("failed creating kubernetes client: %s", err)
 	}
+	k.log = log.New(os.Stdout, "", log.LstdFlags|log.Lshortfile)
 	return
 }
 
@@ -47,11 +50,6 @@ func (k *KubernetesAPI) loadConfig(path string) error {
 		return nil
 	}
 	return fmt.Errorf("failed loading kubernetes config: %s", err)
-}
-
-func (k KubernetesAPI) log(msg string) {
-	log.SetPrefix("k8s ")
-	log.Print(msg)
 }
 
 // ListIngresses returns a list of ingresses in the specified namespace with
@@ -90,7 +88,7 @@ func (k KubernetesAPI) IngressForHost(host string) (*v1beta1.Ingress, error) {
 	for _, ing := range ingresses.Items {
 		// XXX assumes the ingress has only one rule
 		if ing.Spec.Rules[0].Host == host {
-			k.log(fmt.Sprintf("Ingress for '%s' found: %s (ns: %s)", host, ing.Name, ing.Namespace))
+			k.log.Printf("Ingress for '%s' found: %s (ns: %s)", host, ing.Name, ing.Namespace)
 			return &ing, nil
 		}
 	}
@@ -113,7 +111,7 @@ func (k KubernetesAPI) Deployment(ing *v1beta1.Ingress) (*v1.Deployment, error) 
 	}
 
 	dep := &deployments.Items[0]
-	k.log(fmt.Sprintf("Deployment found '%s' (ns: '%s')\n", dep.Name, dep.Namespace))
+	k.log.Printf("Deployment found '%s' (ns: '%s')\n", dep.Name, dep.Namespace)
 	return dep, nil
 }
 

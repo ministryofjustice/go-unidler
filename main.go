@@ -17,7 +17,11 @@ const (
 	UnidlerNs = "default"
 )
 
+var logger *log.Logger
+
 func main() {
+	logger = log.New(os.Stdout, "", log.LstdFlags|log.Lshortfile)
+
 	port, ok := os.LookupEnv("PORT")
 	if !ok {
 		port = ":8080"
@@ -28,7 +32,7 @@ func main() {
 	}
 	home, ok := os.LookupEnv("HOME")
 	if !ok {
-		log.Fatalf("Couldn't determine HOME directory, is $HOME set?")
+		logger.Fatalf("Couldn't determine HOME directory, is $HOME set?")
 	}
 	var err error
 	k8s, err := NewKubernetesAPI(filepath.Join(home, ".kube", "config"))
@@ -39,7 +43,7 @@ func main() {
 	// parse HTML template
 	tmpl, err := template.ParseFiles("templates/index.html")
 	if err != nil {
-		log.Fatalf("Error parsing template: %s", err)
+		logger.Fatalf("Error parsing template: %s", err)
 	}
 
 	// start a Server Side Events broker
@@ -56,7 +60,7 @@ func main() {
 	http.Handle("/events/", sse)
 	http.HandleFunc("/healthz", healthCheck)
 
-	log.Printf("Starting server on port %s...", port)
+	logger.Printf("Starting server on port %s...", port)
 	server := &http.Server{
 		Addr:         port,
 		ReadTimeout:  5 * time.Second,

@@ -1,9 +1,9 @@
 package main
 
 import (
-	"fmt"
 	"html/template"
 	"log"
+	"os"
 )
 
 type (
@@ -13,6 +13,7 @@ type (
 		host             string
 		ingressClassName string
 		k8s              *KubernetesAPI
+		log              *log.Logger
 		sse              SSESender
 		tmpl             *template.Template
 	}
@@ -24,7 +25,9 @@ func (u *Unidler) log(msg string) {
 }
 
 func (u *Unidler) Run() {
-	u.log(fmt.Sprintf("Unidling '%s'...", u.host))
+	u.log = log.New(os.Stdout, "", log.LstdFlags|log.Lshortfile)
+
+	u.log.Printf("Unidling '%s'...", u.host)
 
 	app, err := NewApp(u.host, u.k8s)
 	if err != nil {
@@ -75,6 +78,6 @@ func (u *Unidler) Fail(err error) {
 		event: "error",
 		data:  err.Error(),
 	}
-	u.log(msg.data)
+	u.log.Print(msg.data)
 	u.sse.SendSSE(msg)
 }

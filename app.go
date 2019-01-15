@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
 	"strconv"
 	"strings"
 
@@ -27,8 +28,7 @@ type (
 		host       string
 		ingress    *v1beta1.Ingress
 		k8s        *KubernetesAPI
-		name       string
-		namespace  string
+		logger     *log.Logger
 	}
 )
 
@@ -43,8 +43,7 @@ func NewApp(host string, k8s *KubernetesAPI) (app *App, err error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed getting app: %s", err)
 	}
-	app.name = app.ingress.Name
-	app.namespace = app.ingress.Namespace
+	app.logger = log.New(os.Stdout, "", log.LstdFlags|log.Lshortfile)
 	app.deployment, err = k8s.Deployment(app.ingress)
 	if err != nil {
 		return nil, fmt.Errorf("failed getting app: %s", err)
