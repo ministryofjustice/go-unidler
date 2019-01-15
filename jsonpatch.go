@@ -38,7 +38,7 @@ func Escape(s string) string {
 	return strings.Replace(strings.Replace(s, "~", "~0", -1), "/", "~1", -1)
 }
 
-// JSONPointer constructs a JSONPointer object from zero or more strings
+// JSONPointer constructs a JSON pointer string from zero or more strings
 // representing keys or array indices can be passed to construct the path. "-"
 // can be used to represent the end of an array. Key names are automatically
 // escaped.
