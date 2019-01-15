@@ -34,6 +34,11 @@ test: dependencies
 	@echo " > Testing..."
 	@${GO} test -v
 
+## race-check: Check for race conditions
+race-check:
+	@echo " > Checking for race conditions..."
+	@go run -race app.go jsonpatch.go k8s.go main.go sse.go unidler.go
+
 # clean: Clean build files. Runs `go clean` internally.
 clean:
 	@echo " > Cleaning build cache"

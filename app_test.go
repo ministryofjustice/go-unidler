@@ -1,6 +1,8 @@
 package main
 
 import (
+	"log"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -63,6 +65,7 @@ func TestUnidleApp(t *testing.T) {
 	client := testclient.NewSimpleClientset()
 	api := &KubernetesAPI{
 		client: client,
+		log:    log.New(os.Stdout, "", log.Lshortfile),
 	}
 
 	host := "test.example.com"

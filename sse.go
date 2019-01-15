@@ -126,7 +126,6 @@ func (s *SSEBroker) SendSSE(msg *Message) {
 				client.send <- msg
 			}
 		}
-		s.log.Printf("Sent message to %d members of group %s", len(group.clients), group.name)
 	}
 }
 
@@ -148,7 +147,6 @@ func (s *SSEBroker) add(client *Client) {
 	s.log.Printf("Added client to group %s", group.name)
 
 	if group.lastMessage != nil {
-		s.log.Printf("Sending group %s lastMessage", group.name)
 		client.send <- group.lastMessage
 	}
 }
@@ -159,8 +157,6 @@ func (s *SSEBroker) getOrCreateGroup(name string) *Group {
 		group = NewGroup(name)
 		s.groups[name] = group
 		s.log.Printf("Created group %s", name)
-	} else {
-		s.log.Printf("Group %s already exists", name)
 	}
 	return group
 }
