@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -115,10 +116,22 @@ func (k KubernetesAPI) Deployment(ing *v1beta1.Ingress) (*v1.Deployment, error) 
 	return dep, nil
 }
 
-// PatchDeployment patches a deployment in kubernetes with a specified JSON
-// patch
-func (k KubernetesAPI) PatchDeployment(dep *v1.Deployment, patch string) (*v1.Deployment, error) {
-	return k.client.Apps().Deployments(dep.Namespace).Patch(dep.Name, types.JSONPatchType, []byte(patch))
+// PatchDeployment applies a JSON patch to a Deployment
+func (k KubernetesAPI) PatchDeployment(dep *v1.Deployment, patch ...*Operation) (*v1.Deployment, error) {
+	bytes, err := json.Marshal(patch)
+	if err != nil {
+		return nil, fmt.Errorf("failed patching deployment: %s", err)
+	}
+	return k.client.Apps().Deployments(dep.Namespace).Patch(dep.Name, types.JSONPatchType, bytes)
+}
+
+// PatchIngress applies a JSONPatch to an Ingress
+func (k KubernetesAPI) PatchIngress(ing *v1beta1.Ingress, patch ...*Operation) (*v1beta1.Ingress, error) {
+	bytes, err := json.Marshal(patch)
+	if err != nil {
+		return nil, fmt.Errorf("failed patching ingress: %s", err)
+	}
+	return k.client.Extensions().Ingresses(ing.Namespace).Patch(ing.Name, types.JSONPatchType, bytes)
 }
 
 // UpdateDeployment updates a deployment in kubernetes to match the specified

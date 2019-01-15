@@ -18,6 +18,9 @@ const (
 	// Deployment was idled and the number of replicas it had at that time,
 	// separated by a semicolon, eg: "2018-11-26T17:27:34;2".
 	IdledAtAnnotation = "mojanalytics.xyz/idled-at"
+	// IngressClass is a standard kubernetes annotation name for the class of an
+	// ingress
+	IngressClass = "kubernetes.io/ingress.class"
 )
 
 type (
@@ -52,138 +55,121 @@ func NewApp(host string, k8s *KubernetesAPI) (app *App, err error) {
 }
 
 func (a *App) log(msg string) {
-	log.SetPrefix("app ")
-	log.Printf("Unidling '%s' (ns: '%s'): %s", a.name, a.namespace, msg)
+	a.logger.Printf(
+		"%s/%s: %s",
+		a.ingress.Namespace,
+		a.ingress.Name,
+		msg,
+	)
 }
 
 // SetReplicas updates an App's number of replicas to the specified number
-func (a *App) SetReplicas() error {
-	current := *a.deployment.Spec.Replicas
-	restore, err := strconv.ParseInt(
-		strings.Split(a.deployment.Annotations[IdledAtAnnotation], ",")[1],
-		10,
-		32,
+func (a *App) SetReplicas() (err error) {
+	replicas, err := a.numReplicasToRestore()
+	if err != nil {
+		return fmt.Errorf("failed setting replicas: %s", err)
+	}
+
+	a.deployment, err = a.k8s.PatchDeployment(
+		a.deployment,
+		Replace("/spec/replicas", replicas),
 	)
 	if err != nil {
-		return fmt.Errorf("failed parsing number of replicas to restore: %s", err)
+		return fmt.Errorf("failed setting replicas to %d: %s", replicas, err)
 	}
 
-	replicas := int32(restore)
-	if current != replicas {
-		a.deployment.Spec.Replicas = &replicas
-		_, err := a.k8s.UpdateDeployment(a.deployment)
-		if err != nil {
-			return fmt.Errorf("failed setting replicas to %d: %s", replicas, err)
-		}
-
-		a.log(fmt.Sprintf("Deployment replicas changed to %d", replicas))
-	} else {
-		a.log(fmt.Sprintf("Deployment replicas already %d", replicas))
-	}
-
+	a.log(fmt.Sprintf("Deployment replicas changed to %d", replicas))
 	return nil
 }
 
+// numReplicasToRestore returns the number of replicas that were specified for
+// an App Deployment, as parsed from the idled-at annotation
+func (a *App) numReplicasToRestore() (int32, error) {
+	idledAt, exists := a.deployment.Annotations[IdledAtAnnotation]
+	if !exists {
+		// app not idled, so return current number of replicas for a no-op
+		return *a.deployment.Spec.Replicas, nil
+	}
+
+	// the idled-at annotation value is in the form <TIMESTAMP>,<NUM-REPLICAS>
+	replicas, err := strconv.ParseInt(strings.Split(idledAt, ",")[1], 10, 32)
+	if err != nil {
+		return 0, fmt.Errorf("failed parsing num replicas to restore: %s", err)
+	}
+	return int32(replicas), nil
+}
+
 // EnableIngress updates the App's ingress to route requests to the Deployment
-func (a *App) EnableIngress(ingressClassName string) error {
-	ingressClass := "kubernetes.io/ingress.class"
+func (a *App) EnableIngress(ingressClassName string) (err error) {
 	if ingressClassName == "" {
 		ingressClassName = "nginx"
 	}
 
-	// re-retrieve the ingress to avoid "object has been modified" error
-	var err error
-	a.ingress, err = a.k8s.IngressForHost(a.host)
+	a.ingress, err = a.k8s.PatchIngress(
+		a.ingress,
+		Replace(
+			JSONPointer("metadata", "annotations", IngressClass),
+			ingressClassName,
+		),
+	)
 	if err != nil {
-		return fmt.Errorf("failed getting app ingress: %s", err)
+		return fmt.Errorf("failed enabling ingress: %s", err)
 	}
 
-	current := a.ingress.Annotations[ingressClass]
-
-	if current != ingressClassName {
-		a.ingress.Annotations[ingressClass] = ingressClassName
-		_, err := a.k8s.UpdateIngress(a.ingress)
-		if err != nil {
-			return fmt.Errorf("failed enabling ingress: %s", err)
-		}
-
-		a.log("Ingress is now enabled")
-	} else {
-		a.log(fmt.Sprintf("Ingress already '%s'", ingressClassName))
-	}
+	a.log("Ingress is now enabled")
 	return nil
 }
 
 // RemoveFromUnidlerIngress removes the App's hostname from the Unidler Ingress,
 // preventing further requests from being handled by the Unidler
 func (a *App) RemoveFromUnidlerIngress() error {
-	ing, err := a.k8s.Ingress(UnidlerNs, UnidlerName)
+	unidlerIngress, err := a.k8s.Ingress(UnidlerNs, UnidlerName)
 	if err != nil {
 		return fmt.Errorf("couldn't find unidler ingress: %s", err)
 	}
 
-	// Remove rule for App's host
-	var found bool
-	ing.Spec.Rules, found = removeHostRule(a.host, ing.Spec.Rules)
-
-	if found {
-		_, err := a.k8s.UpdateIngress(ing)
-		if err != nil {
-			return fmt.Errorf("failed updating unidler ingress rules: %s", err)
-		}
-
-		a.log("Removed from unidler ingress")
-	} else {
-		a.log("Not in unidler ingress")
+	filteredRules, _ := removeHostRule(a.host, unidlerIngress.Spec.Rules)
+	_, err = a.k8s.PatchIngress(
+		unidlerIngress,
+		Replace("/spec/rules", filteredRules),
+	)
+	if err != nil {
+		return fmt.Errorf("failed updating unidler ingress rules: %s", err)
 	}
+
+	a.log("Removed from unidler ingress")
 	return nil
 }
 
+// removeHostRule returns a copy of the specified list of IngressRules, with any
+// rules for the specified host removed
 func removeHostRule(host string, rules []v1beta1.IngressRule) ([]v1beta1.IngressRule, bool) {
-	newRules := []v1beta1.IngressRule{}
+	filteredRules := []v1beta1.IngressRule{}
 	found := false
 	for _, rule := range rules {
 		if rule.Host != host {
-			newRules = append(newRules, rule)
+			filteredRules = append(filteredRules, rule)
 		} else {
 			found = true
 		}
 	}
-	return newRules, found
+	return filteredRules, found
 }
 
 // RemoveIdledMetadata removes the App's label and annotation which indicate its
 // idled status, marking it as no longer idled
-func (a *App) RemoveIdledMetadata() error {
-	// re-retrieve the deployment to avoid "object has been modified" error
-	var err error
-	a.deployment, err = a.k8s.Deployment(a.ingress)
+func (a *App) RemoveIdledMetadata() (err error) {
+	a.deployment, err = a.k8s.PatchDeployment(
+		a.deployment,
+		Remove(JSONPointer("metadata", "annotations", IdledAtAnnotation)),
+		Remove(JSONPointer("metadata", "labels", IdledLabel)),
+	)
 	if err != nil {
 		return fmt.Errorf("failed removing idled metadata: %s", err)
 	}
 
-	_, labelExists := a.deployment.Labels[IdledLabel]
-	_, annotationExists := a.deployment.Annotations[IdledAtAnnotation]
-
-	if labelExists || annotationExists {
-		delete(a.deployment.Annotations, IdledAtAnnotation)
-		delete(a.deployment.Labels, IdledLabel)
-		_, err := a.k8s.UpdateDeployment(a.deployment)
-		if err != nil {
-			return fmt.Errorf("failed removing idled metadata: %s", err)
-		}
-
-		a.log("Removed idled label/annotation from deployment")
-	} else {
-		a.log("Deployment not marked as idled")
-	}
+	a.log("Removed idled label/annotation from deployment")
 	return nil
-}
-
-// JSON patch requires "~" and "/" characters to be escaped as "~0" and "~1"
-// respectively. See http://jsonpatch.com/#json-pointer
-func jsonPatchEscape(s string) string {
-	return strings.Replace(strings.Replace(s, "~", "~0", -1), "/", "~1", -1)
 }
 
 // WaitForDeployment blocks until the App's Deployment is ready to receive
