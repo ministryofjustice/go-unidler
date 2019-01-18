@@ -24,12 +24,14 @@
   };
 
   source.onerror = function (e) {
+		source.close();
     updateStatus(e.data);
     var msg  = document.getElementsByClassName("failure")[0];
     msg.classList.remove("hidden");
   };
 
   source.addEventListener("success", function (e) {
+		source.close();
     updateStatus(e.data);
     window.setTimeout(redirect, DELAY);
     var msg = document.getElementsByClassName("success")[0];

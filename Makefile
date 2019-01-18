@@ -37,7 +37,7 @@ test: dependencies
 ## race-check: Check for race conditions
 race-check:
 	@echo " > Checking for race conditions..."
-	@go run -race app.go jsonpatch.go k8s.go main.go sse.go unidler.go
+	@go run -race app.go jsonpatch.go k8s.go main.go
 
 # clean: Clean build files. Runs `go clean` internally.
 clean:
