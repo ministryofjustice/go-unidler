@@ -71,10 +71,10 @@ func main() {
 
 	// parse HTML template
 	tmpl, err := template.New("").ParseFiles(
-		"templates/index.html",
-		"templates/index.js",
+		"templates/content.html",
+		"templates/javascript.js",
 		"templates/throbber.html",
-		"templates/base.html",
+		"templates/layout.html",
 	)
 	if err != nil {
 		logger.Fatalf("Error parsing template: %s", err)
@@ -118,7 +118,7 @@ func getHost(req *http.Request) string {
 
 // Index renders the index page
 func (c *Context) Index(w http.ResponseWriter, req *http.Request) {
-	c.tmpl.ExecuteTemplate(w, "base", getHost(req))
+	c.tmpl.ExecuteTemplate(w, "layout", getHost(req))
 }
 
 // Unidle unidles an app and sends status updates to the client as SSEs
