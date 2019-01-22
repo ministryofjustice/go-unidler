@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"k8s.io/client-go/kubernetes"
 )
 
 const (
@@ -17,7 +19,38 @@ const (
 	UnidlerNs = "default"
 )
 
+type (
+	// Context is a context holder for the unidle handler
+	Context struct {
+		ingressClass string
+		k8s          kubernetes.Interface
+		tmpl         *template.Template
+	}
+
+	// Message represents a Server Sent Event message
+	Message struct {
+		data  string
+		event string
+		group string
+		id    string
+		retry int
+	}
+
+	// StreamingResponseWriter is a convenience interface representing a streaming
+	// HTTP response
+	StreamingResponseWriter interface {
+		http.ResponseWriter
+		http.Flusher
+	}
+)
+
+var (
+	logger *log.Logger
+)
+
 func main() {
+	logger = log.New(os.Stdout, "", log.LstdFlags|log.Lshortfile)
+
 	port, ok := os.LookupEnv("PORT")
 	if !ok {
 		port = ":8080"
@@ -28,35 +61,36 @@ func main() {
 	}
 	home, ok := os.LookupEnv("HOME")
 	if !ok {
-		log.Fatalf("Couldn't determine HOME directory, is $HOME set?")
+		logger.Fatalf("Couldn't determine HOME directory, is $HOME set?")
 	}
-	var err error
-	k8s, err := NewKubernetesAPI(filepath.Join(home, ".kube", "config"))
+
+	k8s, err := KubernetesClient(filepath.Join(home, ".kube", "config"))
 	if err != nil {
 		log.Fatalf("%s", err)
 	}
 
 	// parse HTML template
-	tmpl, err := template.ParseFiles("templates/index.html")
+	tmpl, err := template.New("").ParseFiles(
+		"templates/content.html",
+		"templates/javascript.js",
+		"templates/throbber.html",
+		"templates/layout.html",
+	)
 	if err != nil {
-		log.Fatalf("Error parsing template: %s", err)
+		logger.Fatalf("Error parsing template: %s", err)
 	}
 
-	// start a Server Side Events broker
-	sse := NewSSEBroker()
-
-	u := &Unidler{
-		ingressClassName: ingressClassName,
-		k8s:              k8s,
-		sse:              sse,
-		tmpl:             tmpl,
+	ctx := &Context{
+		ingressClass: ingressClassName,
+		k8s:          k8s,
+		tmpl:         tmpl,
 	}
 
-	http.HandleFunc("/", u.unidle)
-	http.Handle("/events/", sse)
+	http.HandleFunc("/", ctx.Index)
+	http.HandleFunc("/events/", ctx.Unidle)
 	http.HandleFunc("/healthz", healthCheck)
 
-	log.Printf("Starting server on port %s...", port)
+	logger.Printf("Starting server on port %s...", port)
 	server := &http.Server{
 		Addr:         port,
 		ReadTimeout:  5 * time.Second,
@@ -70,12 +104,6 @@ func healthCheck(w http.ResponseWriter, req *http.Request) {
 	fmt.Fprint(w, "Still OK")
 }
 
-func (u *Unidler) unidle(w http.ResponseWriter, req *http.Request) {
-	u.host = getHost(req)
-	u.tmpl.Execute(w, u.host)
-	go u.Run()
-}
-
 func getHost(req *http.Request) string {
 	host := req.Host
 
@@ -86,4 +114,99 @@ func getHost(req *http.Request) string {
 	}
 
 	return host
+}
+
+// Index renders the index page
+func (c *Context) Index(w http.ResponseWriter, req *http.Request) {
+	c.tmpl.ExecuteTemplate(w, "layout", getHost(req))
+}
+
+// Unidle unidles an app and sends status updates to the client as SSEs
+func (c *Context) Unidle(w http.ResponseWriter, req *http.Request) {
+	s, ok := w.(StreamingResponseWriter)
+	if !ok {
+		http.Error(w, "Streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	w.WriteHeader(http.StatusOK)
+	s.Flush()
+
+	sendMessage(s, "Pending")
+
+	app, err := NewApp(getHost(req), c.k8s)
+	if err != nil {
+		sendError(s, err)
+		return
+	}
+
+	sendMessage(s, "Restoring app")
+
+	err = app.SetReplicas()
+	if err != nil {
+		sendError(s, err)
+		return
+	}
+
+	err = app.WaitForDeployment()
+	if err != nil {
+		sendError(s, err)
+		return
+	}
+
+	sendMessage(s, "Redirecting requests to app")
+
+	err = app.EnableIngress(c.ingressClass)
+	if err != nil {
+		sendError(s, err)
+		return
+	}
+
+	err = app.RemoveFromUnidlerIngress()
+	if err != nil {
+		sendError(s, err)
+		return
+	}
+
+	err = app.RemoveIdledMetadata()
+	if err != nil {
+		sendError(s, err)
+		return
+	}
+
+	sendEvent(s, &Message{
+		event: "success",
+		data:  "Ready",
+	})
+}
+
+func sendEvent(s StreamingResponseWriter, m *Message) {
+	fmt.Fprintf(s, m.String())
+	s.Flush()
+}
+
+func sendMessage(s StreamingResponseWriter, msg string) {
+	sendEvent(s, &Message{
+		data: msg,
+	})
+}
+
+func sendError(s StreamingResponseWriter, err error) {
+	sendEvent(s, &Message{
+		event: "error",
+		data:  err.Error(),
+	})
+}
+
+func (m *Message) String() string {
+	return fmt.Sprintf(`id: %s
+retry: %d
+event: %s
+data: %s
+
+`, m.id, m.retry, m.event, m.data)
 }

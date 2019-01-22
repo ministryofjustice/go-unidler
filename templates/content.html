@@ -1,0 +1,27 @@
+{{define "content"}}
+    <main id="content" role="main">
+    <div class="grid-row">
+      <div class="column-two-thirds">
+        <h1 class="heading-large">
+          Unidling, please wait &hellip;
+        </h1>
+        <h2 id="status"></h2>
+        <div class="hidden success">
+          <p>
+          The app was successfully unidled. You should be automatically
+          redirected in a few seconds.
+          </p>
+          <p>
+          Otherwise, <a href="https://{{.}}/">go to the app</a>.
+          </p>
+        </div>
+        <div class="hidden failure error-message">
+          <p>
+          There was a problem unidling the app. Please contact the dev team.
+          </p>
+        </div>
+				{{template "throbber" .}}
+      </div>
+    </div>
+    </main>
+{{end}}
