@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/api/extensions/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -21,6 +22,9 @@ type (
 
 	// Ingress wraps v1beta1.Ingress to add methods
 	Ingress v1beta1.Ingress
+
+	// Service wraps corev1.Service to add methods
+	Service corev1.Service
 )
 
 // KubernetesClient constructs a new Kubernetes client
@@ -66,19 +70,19 @@ func (dep *Deployment) Patch(k kubernetes.Interface, p ...*Operation) error {
 	return nil
 }
 
-// Patch applies a JSONPatch to an Ingress
-func (ing *Ingress) Patch(k kubernetes.Interface, p ...*Operation) error {
+// Patch applies a JSON patch to a Service
+func (svc *Service) Patch(k kubernetes.Interface, p ...*Operation) error {
 	bytes, err := json.Marshal(p)
 	if err != nil {
 		return fmt.Errorf("failed parsing patch: %s", err)
 	}
-	_, err = k.Extensions().Ingresses(ing.Namespace).Patch(
-		ing.Name,
+	_, err = k.CoreV1().Services(svc.Namespace).Patch(
+		svc.Name,
 		types.JSONPatchType,
 		bytes,
 	)
 	if err != nil {
-		return fmt.Errorf("failed patching ingress: %s", err)
+		return fmt.Errorf("failed patching service: %s", err)
 	}
 	return nil
 }

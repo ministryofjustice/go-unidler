@@ -5,34 +5,41 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/api/extensions/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	testclient "k8s.io/client-go/kubernetes/fake"
 )
 
-func MockDeployment(client kubernetes.Interface, ns string, name string, annotations map[string]string, labels map[string]string) *v1.Deployment {
+func MockDeployment(client kubernetes.Interface, ns string, name string, host string) Deployment {
 	var replicas int32
-	labels["app"] = name
 	dep, _ := client.Apps().Deployments(ns).Create(&v1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Annotations: annotations,
-			Name:        name,
-			Labels:      labels,
+			Annotations: map[string]string{
+				IdledAtAnnotation: "2018-12-10T12:34:56Z,1",
+			},
+			Name: name,
+			Labels: map[string]string{
+				"app":      name,
+				"host":     host,
+				IdledLabel: "true",
+			},
 		},
 		Spec: v1.DeploymentSpec{
 			Replicas: &replicas,
 		},
 	})
-	return dep
+	return Deployment(*dep)
 }
 
-func MockIngress(client kubernetes.Interface, ns string, name string, host string) *v1beta1.Ingress {
+func MockIngress(client kubernetes.Interface, ns string, name string, host string) Ingress {
 	ing, _ := client.Extensions().Ingresses(ns).Create(&v1beta1.Ingress{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 			Labels: map[string]string{
-				"app": name,
+				"app":  name,
+				"host": host,
 			},
 			Annotations: map[string]string{
 				"kubernetes.io/ingress.class": "disabled",
@@ -46,27 +53,39 @@ func MockIngress(client kubernetes.Interface, ns string, name string, host strin
 			},
 		},
 	})
-	return ing
+	return Ingress(*ing)
+}
+
+func MockService(k kubernetes.Interface, ns string, name string, host string) Service {
+	svc, _ := k.CoreV1().Services(ns).Create(&corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+			Labels: map[string]string{
+				"app":  name,
+				"host": host,
+			},
+		},
+		Spec: corev1.ServiceSpec{
+			Type:         "ExternalName",
+			ExternalName: "unidler.default.svc.cluster.local",
+		},
+	})
+	return Service(*svc)
 }
 
 func GetIngress(k kubernetes.Interface, ns string, name string) Ingress {
-	ing, _ := k.Extensions().Ingresses(ns).Get(name, metav1.GetOptions{})
+	ing, _ := k.ExtensionsV1beta1().Ingresses(ns).Get(name, metav1.GetOptions{})
 	return Ingress(*ing)
 }
 
 func GetDeployment(k kubernetes.Interface, ns string, name string) Deployment {
-	dep, _ := k.Apps().Deployments(ns).Get(name, metav1.GetOptions{})
+	dep, _ := k.AppsV1().Deployments(ns).Get(name, metav1.GetOptions{})
 	return Deployment(*dep)
 }
 
-func IdledDeployment(client kubernetes.Interface, ns string, name string) *v1.Deployment {
-	annotations := map[string]string{
-		IdledAtAnnotation: "2018-12-10T12:34:56Z,1",
-	}
-	labels := map[string]string{
-		IdledLabel: "true",
-	}
-	return MockDeployment(client, ns, name, annotations, labels)
+func GetService(k kubernetes.Interface, ns string, name string) Service {
+	svc, _ := k.CoreV1().Services(ns).Get(name, metav1.GetOptions{})
+	return Service(*svc)
 }
 
 func TestUnidleApp(t *testing.T) {
@@ -77,11 +96,9 @@ func TestUnidleApp(t *testing.T) {
 	name := "test"
 
 	// setup mock kubernetes resources
-	// app deployment
-	dep := Deployment(*IdledDeployment(client, ns, name))
-
-	// app ingress
-	ing := Ingress(*MockIngress(client, ns, name, host))
+	dep := MockDeployment(client, ns, name, host)
+	ing := MockIngress(client, ns, name, host)
+	svc := MockService(client, ns, name, host)
 
 	app, _ := NewApp(host, client)
 	assert.Equal(t, &ing, app.ingress)
@@ -93,24 +110,23 @@ func TestUnidleApp(t *testing.T) {
 	dep = GetDeployment(client, ns, name)
 	assert.Equal(t, int32(1), *dep.Spec.Replicas)
 
-	assert.Equal(t, "disabled", ing.Annotations[IngressClass])
-	err = app.EnableIngress("nginx")
+	assert.Equal(t, corev1.ServiceTypeExternalName, svc.Spec.Type)
+	assert.Equal(t, "unidler.default.svc.cluster.local", svc.Spec.ExternalName)
+	err = app.RedirectService()
 	assert.Nil(t, err)
-	ing = GetIngress(client, ns, name)
-	assert.Equal(t, "nginx", ing.Annotations[IngressClass])
+	svc = GetService(client, ns, name)
+	assert.Equal(t, corev1.ServiceTypeClusterIP, svc.Spec.Type)
+	// XXX fake patch doesn't remove
+	//assert.Nil(t, svc.Spec.ExternalName)
+	assert.Equal(t, name, svc.Spec.Selector["app"])
+	assert.Equal(t, int32(80), svc.Spec.Ports[0].Port)
+	assert.Equal(t, 3000, svc.Spec.Ports[0].TargetPort.IntValue())
 
-	// setup unidler ingress
-	ing = Ingress(*MockIngress(client, UnidlerNs, UnidlerName, host))
-	assert.Equal(t, 1, countRulesForHost(ing, host))
-	err = app.RemoveFromUnidlerIngress()
-	assert.Nil(t, err)
-	ing = GetIngress(client, UnidlerNs, UnidlerName)
-	assert.Equal(t, 0, countRulesForHost(ing, host))
 	assert.Equal(t, true, isIdled(dep))
 	err = app.RemoveIdledMetadata()
 	assert.Nil(t, err)
 	dep = GetDeployment(client, ns, name)
-	// XXX fake patch doesn't actually update metadata
+	// XXX fake patch doesn't remove
 	//assert.Equal(t, false, isIdled(dep))
 	assert.Equal(t, int32(1), *dep.Spec.Replicas)
 }
