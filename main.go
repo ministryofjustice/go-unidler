@@ -13,6 +13,12 @@ import (
 )
 
 const (
+	// IdledLabel is a metadata label which indicates a Deployment is idled.
+	IdledLabel = "mojanalytics.xyz/idled"
+	// IdledAtAnnotation is a metadata annotation which indicates the time a
+	// Deployment was idled and the number of replicas it had at that time,
+	// separated by a semicolon, eg: "2018-11-26T17:27:34;2".
+	IdledAtAnnotation = "mojanalytics.xyz/idled-at"
 	// UnidlerName is the name of the kubernetes Unidler ingress
 	UnidlerName = "unidler"
 	// UnidlerNs is the namespace of the kubernetes Unidler ingress
@@ -22,9 +28,8 @@ const (
 type (
 	// Context is a context holder for the unidle handler
 	Context struct {
-		ingressClass string
-		k8s          kubernetes.Interface
-		tmpl         *template.Template
+		k8s  kubernetes.Interface
+		tmpl *template.Template
 	}
 
 	// Message represents a Server Sent Event message
@@ -55,10 +60,6 @@ func main() {
 	if !ok {
 		port = ":8080"
 	}
-	ingressClassName, ok := os.LookupEnv("INGRESS_CLASS_NAME")
-	if !ok {
-		ingressClassName = "nginx"
-	}
 	home, ok := os.LookupEnv("HOME")
 	if !ok {
 		logger.Fatalf("Couldn't determine HOME directory, is $HOME set?")
@@ -81,9 +82,8 @@ func main() {
 	}
 
 	ctx := &Context{
-		ingressClass: ingressClassName,
-		k8s:          k8s,
-		tmpl:         tmpl,
+		k8s:  k8s,
+		tmpl: tmpl,
 	}
 
 	http.HandleFunc("/", ctx.Index)
@@ -146,6 +146,12 @@ func (c *Context) Unidle(w http.ResponseWriter, req *http.Request) {
 
 	sendMessage(s, "Restoring app")
 
+	err = app.RedirectService()
+	if err != nil {
+		sendError(s, err)
+		return
+	}
+
 	err = app.SetReplicas()
 	if err != nil {
 		sendError(s, err)
@@ -153,20 +159,6 @@ func (c *Context) Unidle(w http.ResponseWriter, req *http.Request) {
 	}
 
 	err = app.WaitForDeployment()
-	if err != nil {
-		sendError(s, err)
-		return
-	}
-
-	sendMessage(s, "Redirecting requests to app")
-
-	err = app.EnableIngress(c.ingressClass)
-	if err != nil {
-		sendError(s, err)
-		return
-	}
-
-	err = app.RemoveFromUnidlerIngress()
 	if err != nil {
 		sendError(s, err)
 		return

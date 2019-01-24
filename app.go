@@ -8,21 +8,10 @@ import (
 	"strings"
 
 	"k8s.io/api/apps/v1"
-	"k8s.io/api/extensions/v1beta1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes"
-)
-
-const (
-	// IdledLabel is a metadata label which indicates a Deployment is idled.
-	IdledLabel = "mojanalytics.xyz/idled"
-	// IdledAtAnnotation is a metadata annotation which indicates the time a
-	// Deployment was idled and the number of replicas it had at that time,
-	// separated by a semicolon, eg: "2018-11-26T17:27:34;2".
-	IdledAtAnnotation = "mojanalytics.xyz/idled-at"
-	// IngressClass is a standard kubernetes annotation name for the class of an
-	// ingress
-	IngressClass = "kubernetes.io/ingress.class"
 )
 
 type (
@@ -34,6 +23,7 @@ type (
 		ingress    *Ingress
 		k8s        kubernetes.Interface
 		logger     *log.Logger
+		service    *Service
 	}
 )
 
@@ -52,6 +42,10 @@ func NewApp(host string, k kubernetes.Interface) (app *App, err error) {
 	app.deployment, err = app.GetDeployment()
 	if err != nil {
 		return nil, fmt.Errorf("failed finding deployment for %s: %s", host, err)
+	}
+	app.service, err = app.GetService()
+	if err != nil {
+		return nil, fmt.Errorf("failed finding service for %s: %s", host, err)
 	}
 	return app, nil
 }
@@ -92,7 +86,7 @@ func (a *App) GetDeployment() (*Deployment, error) {
 	// deps, err := a.k8s.Apps().Deployments("").List(metav1.ListOptions{
 	//     LabelSelector: fmt.Sprintf("host=%s", a.host),
 	// })
-	deps, err := a.k8s.Apps().Deployments(a.ingress.Namespace).List(
+	deps, err := a.k8s.AppsV1().Deployments(a.ingress.Namespace).List(
 		metav1.ListOptions{
 			LabelSelector: fmt.Sprintf("app=%s", a.ingress.Labels["app"]),
 		},
@@ -108,6 +102,26 @@ func (a *App) GetDeployment() (*Deployment, error) {
 	a.log("Deployment found")
 	dep := Deployment(deps.Items[0])
 	return &dep, nil
+}
+
+// GetService returns the service for the app
+func (a *App) GetService() (*Service, error) {
+	// TODO replace with
+	// svcs, err := a.k8s.CoreV1().Services("").List(metav1.ListOptions{
+	//     LabelSelector: fmt.Sprintf("host=%s", a.host),
+	// })
+	svcs, err := a.k8s.CoreV1().Services(a.ingress.Namespace).List(
+		metav1.ListOptions{
+			LabelSelector: fmt.Sprintf("app=%s", a.ingress.Labels["app"]),
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed listing deployments: %s", err)
+	}
+
+	a.log("Service found")
+	svc := Service(svcs.Items[0])
+	return &svc, nil
 }
 
 // SetReplicas updates an App's number of replicas to the specified number
@@ -137,55 +151,27 @@ func (a *App) SetReplicas() (err error) {
 	return nil
 }
 
-// EnableIngress updates the App's ingress to route requests to the Deployment
-func (a *App) EnableIngress(ingressClassName string) (err error) {
-	if ingressClassName == "" {
-		ingressClassName = "nginx"
-	}
-
-	err = a.ingress.Patch(
+// RedirectService redirects the App's service from the unidler to the app pods
+func (a *App) RedirectService() error {
+	err := a.service.Patch(
 		a.k8s,
-		Replace(
-			JSONPointer("metadata", "annotations", IngressClass),
-			ingressClassName,
-		),
+		Remove("/spec/externalName"),
+		Replace("/spec/type", string(corev1.ServiceTypeClusterIP)),
+		Add("/spec/selector", &map[string]string{
+			"app": a.service.Labels["app"],
+		}),
+		Add("/spec/ports", []corev1.ServicePort{
+			corev1.ServicePort{
+				Port:       int32(80),
+				TargetPort: intstr.FromInt(3000),
+			},
+		}),
 	)
 	if err != nil {
-		return fmt.Errorf("failed enabling ingress: %s", err)
+		return fmt.Errorf("failed redirecting service: %s", err)
 	}
 
-	a.log("Ingress is now enabled")
-	return nil
-}
-
-// RemoveFromUnidlerIngress removes the App's hostname from the Unidler Ingress,
-// preventing further requests from being handled by the Unidler
-func (a *App) RemoveFromUnidlerIngress() error {
-	ing, err := a.k8s.ExtensionsV1beta1().Ingresses(UnidlerNs).Get(
-		UnidlerName,
-		metav1.GetOptions{},
-	)
-	if err != nil {
-		return fmt.Errorf("unidler ingress not found: %s", err)
-	}
-	ingress := Ingress(*ing)
-
-	filteredRules := []v1beta1.IngressRule{}
-	for _, rule := range ingress.Spec.Rules {
-		if rule.Host != a.host {
-			filteredRules = append(filteredRules, rule)
-		}
-	}
-
-	err = ingress.Patch(
-		a.k8s,
-		Replace("/spec/rules", filteredRules),
-	)
-	if err != nil {
-		return fmt.Errorf("failed updating unidler ingress rules: %s", err)
-	}
-
-	a.log("Removed from unidler ingress")
+	a.log("Service redirected")
 	return nil
 }
 

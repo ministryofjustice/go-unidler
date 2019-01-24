@@ -61,6 +61,15 @@ func (p *JSONPatch) MarshalJSON() ([]byte, error) {
 	return json.Marshal(p.operations)
 }
 
+// Add contructs an Operation object to add the value at `path`
+func Add(path string, value interface{}) *Operation {
+	return &Operation{
+		Name:  "add",
+		Path:  path,
+		Value: value,
+	}
+}
+
 // Replace constructs an Operation object to replace the value at `path` with
 // `value`
 func Replace(path string, value interface{}) *Operation {
