@@ -1,11 +1,11 @@
 # See: https://www.cloudreach.com/blog/containerize-this-golang-dockerfiles/
-FROM golang:1.11-alpine AS builder
+FROM golang:1.12-alpine AS builder
 
 RUN apk update \
-    && apk add --no-cache \
+      && apk add --no-cache \
       ca-certificates \
       git \
-	  make
+      make
 
 WORKDIR /go/src/github.com/ministryofjustice/go-unidler
 
