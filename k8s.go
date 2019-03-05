@@ -4,36 +4,36 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/api/extensions/v1beta1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	appsAPI "k8s.io/api/apps/v1"
+	coreAPI "k8s.io/api/core/v1"
+	extAPI "k8s.io/api/extensions/v1beta1"
+	metaAPI "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/watch"
-	"k8s.io/client-go/kubernetes"
+	k8s "k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/oidc"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
 type (
-	// Deployment wraps v1.Deployment to add methods
-	Deployment v1.Deployment
+	// Deployment wraps appsAPI.Deployment to add methods
+	Deployment appsAPI.Deployment
 
-	// Ingress wraps v1beta1.Ingress to add methods
-	Ingress v1beta1.Ingress
+	// Ingress wraps extAPI.Ingress to add methods
+	Ingress extAPI.Ingress
 
-	// Service wraps corev1.Service to add methods
-	Service corev1.Service
+	// Service wraps coreAPI.Service to add methods
+	Service coreAPI.Service
 )
 
 // KubernetesClient constructs a new Kubernetes client
-func KubernetesClient(path string) (k *kubernetes.Clientset, err error) {
+func KubernetesClient(path string) (k *k8s.Clientset, err error) {
 	config, err := loadConfig(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed creating kubernetes client: %s", err)
 	}
-	client, err := kubernetes.NewForConfig(config)
+	client, err := k8s.NewForConfig(config)
 	if err != nil {
 		return nil, fmt.Errorf("failed creating kubernetes client: %s", err)
 	}
@@ -53,7 +53,7 @@ func loadConfig(path string) (config *rest.Config, err error) {
 }
 
 // Patch applies a JSON patch to a Deployment
-func (dep *Deployment) Patch(k kubernetes.Interface, p ...*Operation) error {
+func (dep *Deployment) Patch(k k8s.Interface, p ...*Operation) error {
 	bytes, err := json.Marshal(p)
 	if err != nil {
 		return fmt.Errorf("failed parsing patch: %s", err)
@@ -71,7 +71,7 @@ func (dep *Deployment) Patch(k kubernetes.Interface, p ...*Operation) error {
 }
 
 // Patch applies a JSON patch to a Service
-func (svc *Service) Patch(k kubernetes.Interface, p ...*Operation) error {
+func (svc *Service) Patch(k k8s.Interface, p ...*Operation) error {
 	bytes, err := json.Marshal(p)
 	if err != nil {
 		return fmt.Errorf("failed parsing patch: %s", err)
@@ -88,8 +88,8 @@ func (svc *Service) Patch(k kubernetes.Interface, p ...*Operation) error {
 }
 
 // Watch gets a channel to watch a Deployment
-func (dep *Deployment) Watch(k kubernetes.Interface) (watch.Interface, error) {
-	return k.Apps().Deployments(dep.Namespace).Watch(metav1.ListOptions{
+func (dep *Deployment) Watch(k k8s.Interface) (watch.Interface, error) {
+	return k.Apps().Deployments(dep.Namespace).Watch(metaAPI.ListOptions{
 		FieldSelector: fmt.Sprintf("metadata.name==%s", dep.Name),
 	})
 }

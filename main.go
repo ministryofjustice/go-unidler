@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"k8s.io/client-go/kubernetes"
+	k8s "k8s.io/client-go/kubernetes"
 )
 
 const (
@@ -28,7 +28,7 @@ const (
 type (
 	// Context is a context holder for the unidle handler
 	Context struct {
-		k8s  kubernetes.Interface
+		k8s  k8s.Interface
 		tmpl *template.Template
 	}
 
@@ -146,12 +146,6 @@ func (c *Context) Unidle(w http.ResponseWriter, req *http.Request) {
 
 	sendMessage(s, "Restoring app")
 
-	err = app.RedirectService()
-	if err != nil {
-		sendError(s, err)
-		return
-	}
-
 	err = app.SetReplicas()
 	if err != nil {
 		sendError(s, err)
@@ -159,6 +153,12 @@ func (c *Context) Unidle(w http.ResponseWriter, req *http.Request) {
 	}
 
 	err = app.WaitForDeployment()
+	if err != nil {
+		sendError(s, err)
+		return
+	}
+
+	err = app.RemoveIdledMetadata()
 	if err != nil {
 		sendError(s, err)
 		return

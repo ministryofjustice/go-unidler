@@ -7,11 +7,11 @@ import (
 	"strconv"
 	"strings"
 
-	"k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	appsAPI "k8s.io/api/apps/v1"
+	coreAPI "k8s.io/api/core/v1"
+	metaAPI "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/client-go/kubernetes"
+	k8s "k8s.io/client-go/kubernetes"
 )
 
 type (
@@ -21,7 +21,7 @@ type (
 		deployment *Deployment
 		host       string
 		ingress    *Ingress
-		k8s        kubernetes.Interface
+		k8s        k8s.Interface
 		logger     *log.Logger
 		service    *Service
 	}
@@ -29,7 +29,7 @@ type (
 
 // NewApp constructs a new App and fetches the corresponding kubernetes ingress
 // and deployment
-func NewApp(host string, k kubernetes.Interface) (app *App, err error) {
+func NewApp(host string, k k8s.Interface) (app *App, err error) {
 	app = &App{
 		host:   host,
 		k8s:    k,
@@ -57,7 +57,7 @@ func (a *App) log(msg string) {
 // GetIngress returns the ingress for the app
 func (a *App) GetIngress() (*Ingress, error) {
 	// Get all ingresses with an app label excluding the unidler ingress
-	all, err := a.k8s.ExtensionsV1beta1().Ingresses("").List(metav1.ListOptions{
+	all, err := a.k8s.ExtensionsV1beta1().Ingresses("").List(metaAPI.ListOptions{
 		FieldSelector: fmt.Sprintf("metadata.name!=%s", UnidlerName),
 		// TODO replace with
 		// LabelSelector: fmt.Sprintf("host=%s", a.host),
@@ -83,11 +83,11 @@ func (a *App) GetIngress() (*Ingress, error) {
 // GetDeployment returns the deployment for the app
 func (a *App) GetDeployment() (*Deployment, error) {
 	// TODO replace with
-	// deps, err := a.k8s.Apps().Deployments("").List(metav1.ListOptions{
+	// deps, err := a.k8s.Apps().Deployments("").List(metaAPI.ListOptions{
 	//     LabelSelector: fmt.Sprintf("host=%s", a.host),
 	// })
 	deps, err := a.k8s.AppsV1().Deployments(a.ingress.Namespace).List(
-		metav1.ListOptions{
+		metaAPI.ListOptions{
 			LabelSelector: fmt.Sprintf("app=%s", a.ingress.Labels["app"]),
 		},
 	)
@@ -107,11 +107,11 @@ func (a *App) GetDeployment() (*Deployment, error) {
 // GetService returns the service for the app
 func (a *App) GetService() (*Service, error) {
 	// TODO replace with
-	// svcs, err := a.k8s.CoreV1().Services("").List(metav1.ListOptions{
+	// svcs, err := a.k8s.CoreV1().Services("").List(metaAPI.ListOptions{
 	//     LabelSelector: fmt.Sprintf("host=%s", a.host),
 	// })
 	svcs, err := a.k8s.CoreV1().Services(a.ingress.Namespace).List(
-		metav1.ListOptions{
+		metaAPI.ListOptions{
 			LabelSelector: fmt.Sprintf("app=%s", a.ingress.Labels["app"]),
 		},
 	)
@@ -156,12 +156,12 @@ func (a *App) RedirectService() error {
 	err := a.service.Patch(
 		a.k8s,
 		Remove("/spec/externalName"),
-		Replace("/spec/type", string(corev1.ServiceTypeClusterIP)),
+		Replace("/spec/type", string(coreAPI.ServiceTypeClusterIP)),
 		Add("/spec/selector", &map[string]string{
 			"app": a.service.Labels["app"],
 		}),
-		Add("/spec/ports", []corev1.ServicePort{
-			corev1.ServicePort{
+		Add("/spec/ports", []coreAPI.ServicePort{
+			coreAPI.ServicePort{
 				Port:       int32(80),
 				TargetPort: intstr.FromInt(3000),
 			},
@@ -204,7 +204,7 @@ func (a *App) WaitForDeployment() error {
 	}
 
 	for event := range w.ResultChan() {
-		dep, ok := event.Object.(*v1.Deployment)
+		dep, ok := event.Object.(*appsAPI.Deployment)
 		if !ok {
 			return fmt.Errorf("failed watching deployment: unexpected event type: %+v", event.Object)
 		}
