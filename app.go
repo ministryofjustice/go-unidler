@@ -12,6 +12,8 @@ import (
 	metaAPI "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	k8s "k8s.io/client-go/kubernetes"
+
+	"github.com/ministryofjustice/analytics-platform-go-unidler/jsonpatch"
 )
 
 type (
@@ -142,7 +144,10 @@ func (a *App) SetReplicas() (err error) {
 	}
 
 	replicas := int32(num)
-	err = a.deployment.Patch(a.k8s, Replace("/spec/replicas", &replicas))
+	patch := jsonpatch.Patch(
+		jsonpatch.Replace([]string{"spec", "replicas"}, &replicas),
+	)
+	err = a.deployment.Patch(a.k8s, patch)
 	if err != nil {
 		return fmt.Errorf("failed setting replicas to %d: %s", replicas, err)
 	}
@@ -153,20 +158,21 @@ func (a *App) SetReplicas() (err error) {
 
 // RedirectService redirects the App's service from the unidler to the app pods
 func (a *App) RedirectService() error {
-	err := a.service.Patch(
-		a.k8s,
-		Remove("/spec/externalName"),
-		Replace("/spec/type", string(coreAPI.ServiceTypeClusterIP)),
-		Add("/spec/selector", &map[string]string{
+	patch := jsonpatch.Patch(
+		jsonpatch.Remove([]string{"spec", "externalName"}),
+		jsonpatch.Replace([]string{"spec", "type"}, string(coreAPI.ServiceTypeClusterIP)),
+		jsonpatch.Add([]string{"spec", "selector"}, &map[string]string{
 			"app": a.service.Labels["app"],
 		}),
-		Add("/spec/ports", []coreAPI.ServicePort{
+		jsonpatch.Add([]string{"spec", "ports"}, []coreAPI.ServicePort{
 			coreAPI.ServicePort{
 				Port:       int32(80),
 				TargetPort: intstr.FromInt(3000),
 			},
 		}),
 	)
+
+	err := a.service.Patch(a.k8s, patch)
 	if err != nil {
 		return fmt.Errorf("failed redirecting service: %s", err)
 	}
@@ -178,12 +184,13 @@ func (a *App) RedirectService() error {
 // RemoveIdledMetadata removes the App's label and annotation which indicate its
 // idled status, marking it as no longer idled
 func (a *App) RemoveIdledMetadata() (err error) {
-	// TODO change annotation to num-replicas-to-restore and never remove it
-	err = a.deployment.Patch(
-		a.k8s,
-		Remove(JSONPointer("metadata", "annotations", IdledAtAnnotation)),
-		Remove(JSONPointer("metadata", "labels", IdledLabel)),
+	patch := jsonpatch.Patch(
+		jsonpatch.Remove([]string{"metadata", "annotations", IdledAtAnnotation}),
+		jsonpatch.Remove([]string{"metadata", "labels", IdledLabel}),
 	)
+
+	// TODO change annotation to num-replicas-to-restore and never remove it
+	err = a.deployment.Patch(a.k8s, patch)
 	if err != nil {
 		// ignore missing label or annotation
 		if !strings.Contains(err.Error(), "Unable to remove nonexistent key") {

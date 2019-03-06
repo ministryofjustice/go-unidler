@@ -1,13 +1,12 @@
-package main
+package jsonpatch
 
 import (
-	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
-func TestJsonPatchEscape(t *testing.T) {
+func TestEscape(t *testing.T) {
 	assert := assert.New(t)
 	cases := []struct {
 		value    string
@@ -23,18 +22,18 @@ func TestJsonPatchEscape(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		assert.Equal(Escape(c.value), c.expected)
+		assert.Equal(escape(c.value), c.expected)
 	}
 }
 
-func TestJsonPatch(t *testing.T) {
-	p := NewJSONPatch(
-		Replace("/a/b/c", "bar"),
-		Remove("/a/b/d"),
-	)
-	bytes, err := json.Marshal(p)
+func TestPatch(t *testing.T) {
 	assert := assert.New(t)
-	assert.Nil(err)
+
+	bytes := Patch(
+		Replace([]string{"a", "b", "c"}, "bar"),
+		Remove([]string{"a", "b", "d"}),
+	)
+
 	assert.Equal(
 		`[{"op":"replace","path":"/a/b/c","value":"bar"},{"op":"remove","path":"/a/b/d"}]`,
 		string(bytes),

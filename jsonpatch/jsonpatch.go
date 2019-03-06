@@ -1,4 +1,4 @@
-package main
+package jsonpatch
 
 import (
 	"encoding/json"
@@ -30,30 +30,10 @@ type (
 	}
 )
 
-// Escape returns the string formatted for use in a JSON pointer in a JSON
-// patch.
-// JSON patch requires "~" and "/" characters to be escaped as "~0" and "~1"
-// respectively. See http://jsonpatch.com/#json-pointer
-func Escape(s string) string {
-	return strings.Replace(strings.Replace(s, "~", "~0", -1), "/", "~1", -1)
-}
+func Patch(p ...*Operation) []byte {
+	bytes, _ := json.Marshal(p)
 
-// JSONPointer constructs a JSON pointer string from zero or more strings
-// representing keys or array indices can be passed to construct the path. "-"
-// can be used to represent the end of an array. Key names are automatically
-// escaped.
-func JSONPointer(parts ...string) string {
-	escaped := make([]string, len(parts))
-	for i, part := range parts {
-		escaped[i] = Escape(part)
-	}
-	return fmt.Sprintf("/%s", strings.Join(escaped, "/"))
-}
-
-// NewJSONPatch constructs a JSONPatch object. Zero or more Operation objects
-// may be passed to add to the patch operations list.
-func NewJSONPatch(operations ...*Operation) *JSONPatch {
-	return &JSONPatch{operations}
+	return bytes
 }
 
 // MarshalJSON returns a JSON byte array representation of the JSONPatch object
@@ -62,28 +42,51 @@ func (p *JSONPatch) MarshalJSON() ([]byte, error) {
 }
 
 // Add contructs an Operation object to add the value at `path`
-func Add(path string, value interface{}) *Operation {
+func Add(path []string, value interface{}) *Operation {
 	return &Operation{
 		Name:  "add",
-		Path:  path,
+		Path:  escapePath(path),
 		Value: value,
 	}
 }
 
 // Replace constructs an Operation object to replace the value at `path` with
 // `value`
-func Replace(path string, value interface{}) *Operation {
+func Replace(path []string, value interface{}) *Operation {
 	return &Operation{
 		Name:  "replace",
-		Path:  path,
+		Path:  escapePath(path),
 		Value: value,
 	}
 }
 
 // Remove constructs an Operation object to remove the value at `path`
-func Remove(path string) *Operation {
+func Remove(path []string) *Operation {
 	return &Operation{
 		Name: "remove",
-		Path: path,
+		Path: escapePath(path),
 	}
+}
+
+// escapePath constructs a JSON pointer string from zero or more strings
+// representing keys or array indices can be passed to construct the path. "-"
+// can be used to represent the end of an array. Key names are automatically
+// escaped.
+func escapePath(parts []string) string {
+	escaped := make([]string, 0, len(parts))
+	for _, part := range parts {
+		escaped = append(escaped, escape(part))
+	}
+	return fmt.Sprintf("/%s", strings.Join(escaped, "/"))
+}
+
+// Escape returns the string formatted for use in a JSON pointer in a JSON
+// patch.
+// JSON patch requires "~" and "/" characters to be escaped as "~0" and "~1"
+// respectively. See http://jsonpatch.com/#json-pointer
+func escape(s string) (escaped string) {
+	escaped = strings.Replace(s, "~", "~0", -1)
+	escaped = strings.Replace(escaped, "/", "~1", -1)
+
+	return
 }

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 
 	appsAPI "k8s.io/api/apps/v1"
@@ -53,36 +52,28 @@ func loadConfig(path string) (config *rest.Config, err error) {
 }
 
 // Patch applies a JSON patch to a Deployment
-func (dep *Deployment) Patch(k k8s.Interface, p ...*Operation) error {
-	bytes, err := json.Marshal(p)
-	if err != nil {
-		return fmt.Errorf("failed parsing patch: %s", err)
-	}
-
-	_, err = k.Apps().Deployments(dep.Namespace).Patch(
-		dep.Name,
+func (d *Deployment) Patch(k k8s.Interface, patch []byte) error {
+	_, err := k.Apps().Deployments(d.Namespace).Patch(
+		d.Name,
 		types.JSONPatchType,
-		bytes,
+		patch,
 	)
 	if err != nil {
-		return fmt.Errorf("failed patching deployment: %s", err)
+		return fmt.Errorf("failed to patch Deployment: %s", err)
 	}
+
 	return nil
 }
 
 // Patch applies a JSON patch to a Service
-func (svc *Service) Patch(k k8s.Interface, p ...*Operation) error {
-	bytes, err := json.Marshal(p)
-	if err != nil {
-		return fmt.Errorf("failed parsing patch: %s", err)
-	}
-	_, err = k.CoreV1().Services(svc.Namespace).Patch(
+func (svc *Service) Patch(k k8s.Interface, patch []byte) error {
+	_, err := k.CoreV1().Services(svc.Namespace).Patch(
 		svc.Name,
 		types.JSONPatchType,
-		bytes,
+		patch,
 	)
 	if err != nil {
-		return fmt.Errorf("failed patching service: %s", err)
+		return fmt.Errorf("failed to patch Service: %s", err)
 	}
 	return nil
 }
