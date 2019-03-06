@@ -10,53 +10,87 @@ import (
 	k8sFake "k8s.io/client-go/kubernetes/fake"
 )
 
-func TestUnidleApp(t *testing.T) {
+const (
+	HOST = "test.example.com"
+	NS   = "test-ns"
+	NAME = "test"
+)
+
+var (
+	app    *App
+	deploy Deployment
+	ing    Ingress
+	svc    Service
+)
+
+func init() {
 	k8sClient = k8sFake.NewSimpleClientset()
 
-	host := "test.example.com"
-	ns := "test-ns"
-	name := "test"
-
 	// setup mock kubernetes resources
-	dep := mockDeployment(k8sClient, ns, name, host)
-	ing := mockIngress(k8sClient, ns, name, host)
-	svc := mockService(k8sClient, ns, name, host)
+	deploy = mockDeployment(k8sClient, NS, NAME, HOST)
+	svc = mockService(k8sClient, NS, NAME, HOST)
+	ing = mockIngress(k8sClient, NS, NAME, HOST)
 
-	app, _ := NewApp(host)
+	app, _ = NewApp(HOST)
+}
+
+func TestNewApp(t *testing.T) {
 	assert.Equal(t, &ing, app.ingress)
-	assert.Equal(t, &dep, app.deployment)
+	assert.Equal(t, &deploy, app.deployment)
+	assert.Equal(t, &svc, app.service)
+}
 
-	assert.Equal(t, int32(0), *dep.Spec.Replicas)
+func TestSetReplicas(t *testing.T) {
+	// Check: We start with 0 replicas
+	assert.Equal(t, int32(0), *deploy.Spec.Replicas)
+
 	err := app.SetReplicas()
-	assert.Nil(t, err)
-	dep = getDeployment(ns, name)
-	assert.Equal(t, int32(1), *dep.Spec.Replicas)
 
+	assert.Nil(t, err)
+	deploy = getDeployment(NS, NAME)
+	assert.Equal(t, int32(1), *deploy.Spec.Replicas)
+}
+
+func TestRedirectService(t *testing.T) {
+	// Check: We start in idled state (service points
+	//        to unidler internal host)
 	assert.Equal(t, coreAPI.ServiceTypeExternalName, svc.Spec.Type)
 	assert.Equal(t, "unidler.default.svc.cluster.local", svc.Spec.ExternalName)
-	err = app.RedirectService()
+
+	err := app.RedirectService()
+
 	assert.Nil(t, err)
-	svc = getService(ns, name)
+	svc = getService(NS, NAME)
 	assert.Equal(t, coreAPI.ServiceTypeClusterIP, svc.Spec.Type)
 	// XXX fake patch doesn't remove
 	//assert.Nil(t, svc.Spec.ExternalName)
-	assert.Equal(t, name, svc.Spec.Selector["app"])
+	assert.Equal(t, NAME, svc.Spec.Selector["app"])
 	assert.Equal(t, int32(80), svc.Spec.Ports[0].Port)
 	assert.Equal(t, 3000, svc.Spec.Ports[0].TargetPort.IntValue())
-
-	assert.Equal(t, true, isIdled(dep))
-	err = app.RemoveIdledMetadata()
-	assert.Nil(t, err)
-	dep = getDeployment(ns, name)
-	// XXX fake patch doesn't remove
-	//assert.Equal(t, false, isIdled(dep))
-	assert.Equal(t, int32(1), *dep.Spec.Replicas)
 }
 
-func isIdled(dep Deployment) bool {
-	_, labelExists := dep.Labels[IdledLabel]
-	_, annotationExists := dep.Annotations[IdledAtAnnotation]
-	return labelExists && annotationExists
+func TestRemoveIdledMetadata(t *testing.T) {
+	// Check: We have idled metadata
+	assert.True(t, hasIdledLabel(deploy))
+	assert.True(t, hasIdledAtAnnotation(deploy))
+
+	err := app.RemoveIdledMetadata()
+
+	assert.Nil(t, err)
+	deploy = getDeployment(NS, NAME)
+	// XXX fake patch doesn't remove
+	// assert.False(t, hasIdledLabel(deploy))
+	// assert.False(t, hasIdledAtAnnotation(deploy))
+}
+
+func hasIdledLabel(deploy Deployment) bool {
+	_, ok := deploy.Labels[IdledLabel]
+	return ok
+}
+
+func hasIdledAtAnnotation(dep Deployment) bool {
+	_, ok := deploy.Annotations[IdledAtAnnotation]
+	return ok
 }
 
 func getDeployment(ns string, name string) Deployment {
