@@ -42,12 +42,6 @@ func unidleHandler(w http.ResponseWriter, req *http.Request) {
 
 	sendMessage(s, "Restoring app")
 
-	err = app.RedirectService()
-	if err != nil {
-		sendError(s, err)
-		return
-	}
-
 	err = app.SetReplicas()
 	if err != nil {
 		sendError(s, err)
@@ -61,6 +55,12 @@ func unidleHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	err = app.RemoveIdledMetadata()
+	if err != nil {
+		sendError(s, err)
+		return
+	}
+
+	err = app.RedirectService()
 	if err != nil {
 		sendError(s, err)
 		return
