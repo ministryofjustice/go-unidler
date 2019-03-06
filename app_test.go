@@ -6,47 +6,47 @@ import (
 	"github.com/stretchr/testify/assert"
 	coreAPI "k8s.io/api/core/v1"
 	metaAPI "k8s.io/apimachinery/pkg/apis/meta/v1"
-	k8s "k8s.io/client-go/kubernetes"
+
 	k8sFake "k8s.io/client-go/kubernetes/fake"
 )
 
-func getDeployment(k k8s.Interface, ns string, name string) Deployment {
-	dep, _ := k.AppsV1().Deployments(ns).Get(name, metaAPI.GetOptions{})
+func getDeployment(ns string, name string) Deployment {
+	dep, _ := k8sClient.AppsV1().Deployments(ns).Get(name, metaAPI.GetOptions{})
 	return Deployment(*dep)
 }
 
-func getService(k k8s.Interface, ns string, name string) Service {
-	svc, _ := k.CoreV1().Services(ns).Get(name, metaAPI.GetOptions{})
+func getService(ns string, name string) Service {
+	svc, _ := k8sClient.CoreV1().Services(ns).Get(name, metaAPI.GetOptions{})
 	return Service(*svc)
 }
 
 func TestUnidleApp(t *testing.T) {
-	client := k8sFake.NewSimpleClientset()
+	k8sClient = k8sFake.NewSimpleClientset()
 
 	host := "test.example.com"
 	ns := "test-ns"
 	name := "test"
 
 	// setup mock kubernetes resources
-	dep := mockDeployment(client, ns, name, host)
-	ing := mockIngress(client, ns, name, host)
-	svc := mockService(client, ns, name, host)
+	dep := mockDeployment(k8sClient, ns, name, host)
+	ing := mockIngress(k8sClient, ns, name, host)
+	svc := mockService(k8sClient, ns, name, host)
 
-	app, _ := NewApp(host, client)
+	app, _ := NewApp(host)
 	assert.Equal(t, &ing, app.ingress)
 	assert.Equal(t, &dep, app.deployment)
 
 	assert.Equal(t, int32(0), *dep.Spec.Replicas)
 	err := app.SetReplicas()
 	assert.Nil(t, err)
-	dep = getDeployment(client, ns, name)
+	dep = getDeployment(ns, name)
 	assert.Equal(t, int32(1), *dep.Spec.Replicas)
 
 	assert.Equal(t, coreAPI.ServiceTypeExternalName, svc.Spec.Type)
 	assert.Equal(t, "unidler.default.svc.cluster.local", svc.Spec.ExternalName)
 	err = app.RedirectService()
 	assert.Nil(t, err)
-	svc = getService(client, ns, name)
+	svc = getService(ns, name)
 	assert.Equal(t, coreAPI.ServiceTypeClusterIP, svc.Spec.Type)
 	// XXX fake patch doesn't remove
 	//assert.Nil(t, svc.Spec.ExternalName)
@@ -57,7 +57,7 @@ func TestUnidleApp(t *testing.T) {
 	assert.Equal(t, true, isIdled(dep))
 	err = app.RemoveIdledMetadata()
 	assert.Nil(t, err)
-	dep = getDeployment(client, ns, name)
+	dep = getDeployment(ns, name)
 	// XXX fake patch doesn't remove
 	//assert.Equal(t, false, isIdled(dep))
 	assert.Equal(t, int32(1), *dep.Spec.Replicas)

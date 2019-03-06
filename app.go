@@ -11,30 +11,38 @@ import (
 	coreAPI "k8s.io/api/core/v1"
 	metaAPI "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	k8s "k8s.io/client-go/kubernetes"
 
 	"github.com/ministryofjustice/analytics-platform-go-unidler/jsonpatch"
 )
 
-type (
-	// App is a Analytical Platform "app" consisting of a kubernetes
-	// deployment, with a corresponding hostname and ingress
-	App struct {
-		deployment *Deployment
-		host       string
-		ingress    *Ingress
-		k8s        k8s.Interface
-		logger     *log.Logger
-		service    *Service
-	}
+// App is a Analytical Platform "app" consisting of a kubernetes
+// deployment, with a corresponding hostname and ingress
+type App struct {
+	deployment *Deployment
+	host       string
+	ingress    *Ingress
+	logger     *log.Logger
+	service    *Service
+}
+
+const (
+	// IdledLabel is a metadata label which indicates a Deployment is idled.
+	IdledLabel = "mojanalytics.xyz/idled"
+	// IdledAtAnnotation is a metadata annotation which indicates the time a
+	// Deployment was idled and the number of replicas it had at that time,
+	// separated by a semicolon, eg: "2018-11-26T17:27:34;2".
+	IdledAtAnnotation = "mojanalytics.xyz/idled-at"
+	// UnidlerName is the name of the kubernetes Unidler ingress
+	UnidlerName = "unidler"
+	// UnidlerNs is the namespace of the kubernetes Unidler ingress
+	UnidlerNs = "default"
 )
 
 // NewApp constructs a new App and fetches the corresponding kubernetes ingress
 // and deployment
-func NewApp(host string, k k8s.Interface) (app *App, err error) {
+func NewApp(host string) (app *App, err error) {
 	app = &App{
 		host:   host,
-		k8s:    k,
 		logger: log.New(os.Stdout, "", log.LstdFlags|log.Lshortfile),
 	}
 	app.ingress, err = app.GetIngress()
@@ -59,7 +67,7 @@ func (a *App) log(msg string) {
 // GetIngress returns the ingress for the app
 func (a *App) GetIngress() (*Ingress, error) {
 	// Get all ingresses with an app label excluding the unidler ingress
-	all, err := a.k8s.ExtensionsV1beta1().Ingresses("").List(metaAPI.ListOptions{
+	all, err := k8sClient.ExtensionsV1beta1().Ingresses("").List(metaAPI.ListOptions{
 		FieldSelector: fmt.Sprintf("metadata.name!=%s", UnidlerName),
 		// TODO replace with
 		// LabelSelector: fmt.Sprintf("host=%s", a.host),
@@ -85,10 +93,10 @@ func (a *App) GetIngress() (*Ingress, error) {
 // GetDeployment returns the deployment for the app
 func (a *App) GetDeployment() (*Deployment, error) {
 	// TODO replace with
-	// deps, err := a.k8s.Apps().Deployments("").List(metaAPI.ListOptions{
+	// deps, err := k8sClient.Apps().Deployments("").List(metaAPI.ListOptions{
 	//     LabelSelector: fmt.Sprintf("host=%s", a.host),
 	// })
-	deps, err := a.k8s.AppsV1().Deployments(a.ingress.Namespace).List(
+	deps, err := k8sClient.AppsV1().Deployments(a.ingress.Namespace).List(
 		metaAPI.ListOptions{
 			LabelSelector: fmt.Sprintf("app=%s", a.ingress.Labels["app"]),
 		},
@@ -98,7 +106,7 @@ func (a *App) GetDeployment() (*Deployment, error) {
 	}
 	num := len(deps.Items)
 	if num != 1 {
-		return nil, fmt.Errorf("want 1 deployment, got %d", num)
+		return nil, fmt.Errorf("expected exactly 1 Deployment, found %d", num)
 	}
 
 	a.log("Deployment found")
@@ -109,10 +117,10 @@ func (a *App) GetDeployment() (*Deployment, error) {
 // GetService returns the service for the app
 func (a *App) GetService() (*Service, error) {
 	// TODO replace with
-	// svcs, err := a.k8s.CoreV1().Services("").List(metaAPI.ListOptions{
+	// svcs, err := k8sClient.CoreV1().Services("").List(metaAPI.ListOptions{
 	//     LabelSelector: fmt.Sprintf("host=%s", a.host),
 	// })
-	svcs, err := a.k8s.CoreV1().Services(a.ingress.Namespace).List(
+	svcs, err := k8sClient.CoreV1().Services(a.ingress.Namespace).List(
 		metaAPI.ListOptions{
 			LabelSelector: fmt.Sprintf("app=%s", a.ingress.Labels["app"]),
 		},
@@ -147,7 +155,7 @@ func (a *App) SetReplicas() (err error) {
 	patch := jsonpatch.Patch(
 		jsonpatch.Replace([]string{"spec", "replicas"}, &replicas),
 	)
-	err = a.deployment.Patch(a.k8s, patch)
+	err = a.deployment.Patch(patch)
 	if err != nil {
 		return fmt.Errorf("failed setting replicas to %d: %s", replicas, err)
 	}
@@ -172,7 +180,7 @@ func (a *App) RedirectService() error {
 		}),
 	)
 
-	err := a.service.Patch(a.k8s, patch)
+	err := a.service.Patch(patch)
 	if err != nil {
 		return fmt.Errorf("failed redirecting service: %s", err)
 	}
@@ -190,7 +198,7 @@ func (a *App) RemoveIdledMetadata() (err error) {
 	)
 
 	// TODO change annotation to num-replicas-to-restore and never remove it
-	err = a.deployment.Patch(a.k8s, patch)
+	err = a.deployment.Patch(patch)
 	if err != nil {
 		// ignore missing label or annotation
 		if !strings.Contains(err.Error(), "Unable to remove nonexistent key") {
@@ -205,7 +213,7 @@ func (a *App) RemoveIdledMetadata() (err error) {
 // WaitForDeployment blocks until the App's Deployment is ready to receive
 // incoming requests
 func (a *App) WaitForDeployment() error {
-	w, err := a.deployment.Watch(a.k8s)
+	w, err := a.deployment.Watch()
 	if err != nil {
 		return fmt.Errorf("failed watching deployment: %s", err)
 	}

@@ -27,7 +27,7 @@ type (
 )
 
 // KubernetesClient constructs a new Kubernetes client
-func KubernetesClient(path string) (k *k8s.Clientset, err error) {
+func KubernetesClient(path string) (k k8s.Interface, err error) {
 	config, err := loadConfig(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed creating kubernetes client: %s", err)
@@ -52,8 +52,8 @@ func loadConfig(path string) (config *rest.Config, err error) {
 }
 
 // Patch applies a JSON patch to a Deployment
-func (d *Deployment) Patch(k k8s.Interface, patch []byte) error {
-	_, err := k.Apps().Deployments(d.Namespace).Patch(
+func (d *Deployment) Patch(patch []byte) error {
+	_, err := k8sClient.Apps().Deployments(d.Namespace).Patch(
 		d.Name,
 		types.JSONPatchType,
 		patch,
@@ -66,8 +66,8 @@ func (d *Deployment) Patch(k k8s.Interface, patch []byte) error {
 }
 
 // Patch applies a JSON patch to a Service
-func (svc *Service) Patch(k k8s.Interface, patch []byte) error {
-	_, err := k.CoreV1().Services(svc.Namespace).Patch(
+func (svc *Service) Patch(patch []byte) error {
+	_, err := k8sClient.CoreV1().Services(svc.Namespace).Patch(
 		svc.Name,
 		types.JSONPatchType,
 		patch,
@@ -79,8 +79,8 @@ func (svc *Service) Patch(k k8s.Interface, patch []byte) error {
 }
 
 // Watch gets a channel to watch a Deployment
-func (dep *Deployment) Watch(k k8s.Interface) (watch.Interface, error) {
-	return k.Apps().Deployments(dep.Namespace).Watch(metaAPI.ListOptions{
+func (dep *Deployment) Watch() (watch.Interface, error) {
+	return k8sClient.Apps().Deployments(dep.Namespace).Watch(metaAPI.ListOptions{
 		FieldSelector: fmt.Sprintf("metadata.name==%s", dep.Name),
 	})
 }
