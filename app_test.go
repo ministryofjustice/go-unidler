@@ -10,16 +10,6 @@ import (
 	k8sFake "k8s.io/client-go/kubernetes/fake"
 )
 
-func getDeployment(ns string, name string) Deployment {
-	dep, _ := k8sClient.AppsV1().Deployments(ns).Get(name, metaAPI.GetOptions{})
-	return Deployment(*dep)
-}
-
-func getService(ns string, name string) Service {
-	svc, _ := k8sClient.CoreV1().Services(ns).Get(name, metaAPI.GetOptions{})
-	return Service(*svc)
-}
-
 func TestUnidleApp(t *testing.T) {
 	k8sClient = k8sFake.NewSimpleClientset()
 
@@ -63,18 +53,18 @@ func TestUnidleApp(t *testing.T) {
 	assert.Equal(t, int32(1), *dep.Spec.Replicas)
 }
 
-func countRulesForHost(ing Ingress, host string) int {
-	count := 0
-	for _, rule := range ing.Spec.Rules {
-		if rule.Host == host {
-			count++
-		}
-	}
-	return count
-}
-
 func isIdled(dep Deployment) bool {
 	_, labelExists := dep.Labels[IdledLabel]
 	_, annotationExists := dep.Annotations[IdledAtAnnotation]
 	return labelExists && annotationExists
+}
+
+func getDeployment(ns string, name string) Deployment {
+	dep, _ := k8sClient.AppsV1().Deployments(ns).Get(name, metaAPI.GetOptions{})
+	return Deployment(*dep)
+}
+
+func getService(ns string, name string) Service {
+	svc, _ := k8sClient.CoreV1().Services(ns).Get(name, metaAPI.GetOptions{})
+	return Service(*svc)
 }
