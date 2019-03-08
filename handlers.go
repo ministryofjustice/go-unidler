@@ -17,8 +17,8 @@ func indexHandler(w http.ResponseWriter, req *http.Request) {
 	indexTemplates.ExecuteTemplate(w, "layout", req.Host)
 }
 
-// Unidle unidles an app and sends status updates to the client as SSEs
-func unidleHandler(w http.ResponseWriter, req *http.Request) {
+// Unidles an app and sends status updates to the client as SSEs
+func eventsHandler(w http.ResponseWriter, req *http.Request) {
 	s, ok := w.(StreamingResponseWriter)
 	if !ok {
 		http.Error(w, "Streaming not supported", http.StatusInternalServerError)

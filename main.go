@@ -52,7 +52,7 @@ func main() {
 	}
 
 	http.HandleFunc("/", indexHandler)
-	http.HandleFunc("/events/", unidleHandler)
+	http.HandleFunc("/events/", eventsHandler)
 	http.HandleFunc("/healthz", healthCheckHandler)
 
 	logger.Printf("Starting server on port %s...", port)
