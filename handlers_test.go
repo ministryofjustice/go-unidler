@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -11,38 +10,31 @@ import (
 )
 
 func TestHealthCheckHandler(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(healthCheckHandler))
-	defer ts.Close()
+	req, _ := http.NewRequest("GET", "/healthz", nil)
 
-	resp, err := http.Get(ts.URL)
+	rec := httptest.NewRecorder()
+	handler := http.HandlerFunc(healthCheckHandler)
+	handler.ServeHTTP(rec, req)
 
-	assert.Nil(t, err)
-
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	assert.Equal(t, "Still OK", string(body))
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "Still OK", rec.Body.String())
 }
 
 func TestIndexHandler(t *testing.T) {
 	const HOST = "test-tool.example.com"
 
-	ts := httptest.NewServer(http.HandlerFunc(indexHandler))
-	defer ts.Close()
-
-	req, _ := http.NewRequest("GET", ts.URL, nil)
-	req.Host = HOST
-
-	resp, err := http.DefaultClient.Do(req)
-
-	assert.Nil(t, err)
-
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-
 	// Render index template string
 	var expectedBody bytes.Buffer
-	err = indexTemplates.ExecuteTemplate(&expectedBody, "layout", HOST)
+	err := indexTemplates.ExecuteTemplate(&expectedBody, "layout", HOST)
 	assert.Nil(t, err)
 
-	assert.Equal(t, expectedBody.String(), string(body), "Response body didn't match template: '%s'", expectedBody.String())
+	req, _ := http.NewRequest("GET", "/", nil)
+	req.Host = HOST
+
+	rec := httptest.NewRecorder()
+	handler := http.HandlerFunc(indexHandler)
+	handler.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, expectedBody.String(), rec.Body.String(), "Response body didn't match template: '%s'", expectedBody.String())
 }
