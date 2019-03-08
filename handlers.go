@@ -14,7 +14,7 @@ type StreamingResponseWriter interface {
 
 // Index renders the index page
 func indexHandler(w http.ResponseWriter, req *http.Request) {
-	indexTemplates.ExecuteTemplate(w, "layout", getHost(req))
+	indexTemplates.ExecuteTemplate(w, "layout", req.Host)
 }
 
 // Unidle unidles an app and sends status updates to the client as SSEs
@@ -34,7 +34,7 @@ func unidleHandler(w http.ResponseWriter, req *http.Request) {
 
 	sendMessage(s, "Pending")
 
-	app, err := NewApp(getHost(req))
+	app, err := NewApp(req.Host)
 	if err != nil {
 		sendError(s, err)
 		return
@@ -74,16 +74,4 @@ func unidleHandler(w http.ResponseWriter, req *http.Request) {
 
 func healthCheckHandler(w http.ResponseWriter, req *http.Request) {
 	fmt.Fprint(w, "Still OK")
-}
-
-func getHost(req *http.Request) string {
-	host := req.Host
-
-	// for testing purposes, allow host to be supplied as a URL parameter
-	q := req.URL.Query()
-	if h, ok := q["host"]; ok {
-		host = h[0]
-	}
-
-	return host
 }
