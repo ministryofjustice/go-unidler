@@ -17,6 +17,21 @@ var (
 	indexTemplates *template.Template
 )
 
+func init() {
+	var err error
+
+	// parse HTML template
+	indexTemplates, err = template.New("").ParseFiles(
+		"templates/content.html",
+		"templates/javascript.js",
+		"templates/throbber.html",
+		"templates/layout.html",
+	)
+	if err != nil {
+		logger.Fatalf("Error parsing template: %s", err)
+	}
+}
+
 func main() {
 	var err error
 
@@ -34,17 +49,6 @@ func main() {
 	k8sClient, err = KubernetesClient(filepath.Join(home, ".kube", "config"))
 	if err != nil {
 		log.Fatalf("%s", err)
-	}
-
-	// parse HTML template
-	indexTemplates, err = template.New("").ParseFiles(
-		"templates/content.html",
-		"templates/javascript.js",
-		"templates/throbber.html",
-		"templates/layout.html",
-	)
-	if err != nil {
-		logger.Fatalf("Error parsing template: %s", err)
 	}
 
 	http.HandleFunc("/", indexHandler)
