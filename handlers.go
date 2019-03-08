@@ -72,6 +72,6 @@ func eventsHandler(w http.ResponseWriter, req *http.Request) {
 	})
 }
 
-func healthCheckHandler(w http.ResponseWriter, req *http.Request) {
+func healthzHandler(w http.ResponseWriter, req *http.Request) {
 	fmt.Fprint(w, "Still OK")
 }

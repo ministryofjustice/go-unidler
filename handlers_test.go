@@ -13,7 +13,7 @@ func TestHealthCheckHandler(t *testing.T) {
 	req, _ := http.NewRequest("GET", "/healthz", nil)
 
 	rec := httptest.NewRecorder()
-	handler := http.HandlerFunc(healthCheckHandler)
+	handler := http.HandlerFunc(healthzHandler)
 	handler.ServeHTTP(rec, req)
 
 	assert.Equal(t, http.StatusOK, rec.Code)

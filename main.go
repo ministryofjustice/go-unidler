@@ -53,7 +53,7 @@ func main() {
 
 	http.HandleFunc("/", indexHandler)
 	http.HandleFunc("/events/", eventsHandler)
-	http.HandleFunc("/healthz", healthCheckHandler)
+	http.HandleFunc("/healthz", healthzHandler)
 
 	logger.Printf("Starting server on port %s...", port)
 	server := &http.Server{
