@@ -11,14 +11,17 @@ import (
 	k8s "k8s.io/client-go/kubernetes"
 )
 
+const DEFAULT_PORT = ":8080"
+
 var (
 	logger         *log.Logger
 	k8sClient      k8s.Interface
 	indexTemplates *template.Template
+	err            error
 )
 
 func init() {
-	var err error
+	logger = log.New(os.Stdout, "", log.LstdFlags|log.Lshortfile)
 
 	// parse HTML template
 	indexTemplates, err = template.New("").ParseFiles(
@@ -33,22 +36,19 @@ func init() {
 }
 
 func main() {
-	var err error
-
-	logger = log.New(os.Stdout, "", log.LstdFlags|log.Lshortfile)
-
 	port, ok := os.LookupEnv("PORT")
 	if !ok {
-		port = ":8080"
+		logger.Printf("$PORT not set. Defaulting to '%s'", DEFAULT_PORT)
+		port = DEFAULT_PORT
 	}
 	home, ok := os.LookupEnv("HOME")
 	if !ok {
-		logger.Fatalf("Couldn't determine HOME directory, is $HOME set?")
+		logger.Fatalf("$HOME not set. It couldn't determine HOME directory.")
 	}
 
 	k8sClient, err = KubernetesClient(filepath.Join(home, ".kube", "config"))
 	if err != nil {
-		log.Fatalf("%s", err)
+		log.Fatalf("Failed to create k8s client: %s", err)
 	}
 
 	http.HandleFunc("/", indexHandler)

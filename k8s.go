@@ -30,11 +30,11 @@ type (
 func KubernetesClient(path string) (k k8s.Interface, err error) {
 	config, err := loadConfig(path)
 	if err != nil {
-		return nil, fmt.Errorf("failed creating kubernetes client: %s", err)
+		return nil, fmt.Errorf("failed to load k8s config: %s", err)
 	}
 	client, err := k8s.NewForConfig(config)
 	if err != nil {
-		return nil, fmt.Errorf("failed creating kubernetes client: %s", err)
+		return nil, fmt.Errorf("failed to create new client from config: %s", err)
 	}
 	return client, nil
 }
@@ -48,7 +48,7 @@ func loadConfig(path string) (config *rest.Config, err error) {
 	if err == nil {
 		return
 	}
-	return nil, fmt.Errorf("failed loading kubernetes config: %s", err)
+	return nil, fmt.Errorf("failed to load k8s config from cluster and from kube config (fallback): %s", err)
 }
 
 // Patch applies a JSON patch to a Deployment
@@ -59,7 +59,7 @@ func (d *Deployment) Patch(patch []byte) error {
 		patch,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to patch Deployment: %s", err)
+		return fmt.Errorf("Patch on Deployment failed:: %s", err)
 	}
 
 	return nil
@@ -73,7 +73,7 @@ func (svc *Service) Patch(patch []byte) error {
 		patch,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to patch Service: %s", err)
+		return fmt.Errorf("Patch on Service failed: %s", err)
 	}
 	return nil
 }

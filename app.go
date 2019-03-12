@@ -45,23 +45,27 @@ func NewApp(host string) (app *App, err error) {
 		host:   host,
 		logger: log.New(os.Stdout, "", log.LstdFlags|log.Lshortfile),
 	}
+
 	app.ingress, err = app.GetIngress()
 	if err != nil {
-		return nil, fmt.Errorf("failed finding ingress for %s: %s", host, err)
+		app.log("Ingress not found: %s", err)
+		return nil, fmt.Errorf("Ingress for your app not found.")
 	}
 	app.deployment, err = app.GetDeployment()
 	if err != nil {
-		return nil, fmt.Errorf("failed finding deployment for %s: %s", host, err)
+		app.log("Deployment not found: %s", err)
+		return nil, fmt.Errorf("Deployment for your app not found.")
 	}
 	app.service, err = app.GetService()
 	if err != nil {
-		return nil, fmt.Errorf("failed finding service for %s: %s", host, err)
+		app.log("Service not found: %s", err)
+		return nil, fmt.Errorf("Service for your app not found.")
 	}
 	return app, nil
 }
 
-func (a *App) log(msg string) {
-	a.logger.Printf("%s: %s", a.host, msg)
+func (a *App) log(format string, args ...interface{}) {
+	a.logger.Printf("%s: %s", a.host, fmt.Sprintf(format, args...))
 }
 
 // GetIngress returns the ingress for the app
@@ -141,6 +145,7 @@ func (a *App) SetReplicas() (err error) {
 	idledAt, exists := a.deployment.Annotations[IdledAtAnnotation]
 	if !exists {
 		// no annotation means the app is not idled, so skip this step
+		a.log("Deployment had '%s' annotation. Assuming is already unidled.", IdledAtAnnotation)
 		return nil
 	}
 
@@ -148,7 +153,8 @@ func (a *App) SetReplicas() (err error) {
 	// TODO remove timestamp and just ParseInt
 	num, err := strconv.ParseInt(strings.Split(idledAt, ",")[1], 10, 32)
 	if err != nil {
-		return fmt.Errorf("failed parsing idled-at annotation: %s", err)
+		a.log("Failed to parse original number of replicas, assuming deployment had 1 replica. Deployment annotation: '%s=%s': %s", IdledAtAnnotation, idledAt, err)
+		num = 1
 	}
 
 	replicas := int32(num)
@@ -157,10 +163,11 @@ func (a *App) SetReplicas() (err error) {
 	)
 	err = a.deployment.Patch(patch)
 	if err != nil {
-		return fmt.Errorf("failed setting replicas to %d: %s", replicas, err)
+		a.log("Patch to set replicas back to %d failed: %s", replicas, err)
+		return fmt.Errorf("Failed to set your app's replicas back to %d.", replicas)
 	}
 
-	a.log(fmt.Sprintf("Deployment replicas changed to %d", replicas))
+	a.log("Successfully set Deployment's replicas to %d.", replicas)
 	return nil
 }
 
@@ -185,7 +192,7 @@ func (a *App) RedirectService() error {
 		return fmt.Errorf("failed redirecting service: %s", err)
 	}
 
-	a.log("Service redirected")
+	a.log("Successfully redirected Service back to app's pods.")
 	return nil
 }
 
@@ -200,28 +207,34 @@ func (a *App) RemoveIdledMetadata() (err error) {
 	// TODO change annotation to num-replicas-to-restore and never remove it
 	err = a.deployment.Patch(patch)
 	if err != nil {
+		a.log("Patch to remove idled metadata label/annotation failed: %s", err)
+
 		// ignore missing label or annotation
 		if !strings.Contains(err.Error(), "Unable to remove nonexistent key") {
-			return fmt.Errorf("failed removing idled metadata: %s", err)
+			return fmt.Errorf("Failed to remove idled metadata from your app.")
 		}
 	}
 
-	a.log("Removed idled label/annotation")
+	a.log("Successfully removed idled metadata (label/annotation) from Deployment.")
 	return nil
 }
 
 // WaitForDeployment blocks until the App's Deployment is ready to receive
 // incoming requests
 func (a *App) WaitForDeployment() error {
+	userFriendlyError := fmt.Errorf("Failed to wait for for your app to come back up.")
+
 	w, err := a.deployment.Watch()
 	if err != nil {
-		return fmt.Errorf("failed watching deployment: %s", err)
+		a.log("Watch on Deployment failed: %s", err)
+		return userFriendlyError
 	}
 
 	for event := range w.ResultChan() {
 		dep, ok := event.Object.(*appsAPI.Deployment)
 		if !ok {
-			return fmt.Errorf("failed watching deployment: unexpected event type: %+v", event.Object)
+			a.log("Unexpected Watch event type: %+v", event.Object)
+			return userFriendlyError
 		}
 
 		if dep.Status.AvailableReplicas > 0 {
@@ -229,6 +242,6 @@ func (a *App) WaitForDeployment() error {
 		}
 	}
 
-	a.log("Deployment has available replicas")
+	a.log("Successfully waited for Deployment replicas to be available.")
 	return nil
 }
