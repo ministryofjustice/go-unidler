@@ -10,11 +10,14 @@ This is performing the reverse operation of the [idler](https://github.com/minis
 A Makefile is provided to enable easily building, testing and running the
 unidler.
 
-### `make static`
+### `make help`
+Show list of available "commands" (targets)
+
+### `make static` (default)
 Compiles the unidler to a static-linked binary
 
 ### `make run`
-Compiles and runs the unidler on `http://localhost:8000` (or the `$PORT`
+Compiles and runs the unidler on `http://localhost:8080` (or the `$PORT`
 specified)
 
 ### `make test`
@@ -32,15 +35,17 @@ The application doesn't require any configuration to work.
 You can set the following environment variables if you need to:
 
 
-| Env variable         | Default   | Details |
-| -------------------- | --------- | ------- |
+| Env variable         | Default |  Details |
+| -------------------- | ------- | -------- |
+| `HOME`               |         | Home where .kube config would be when not using in-cluster config (e.g. when running locally) |
 | `PORT`               | `:8080` | port on which the server listen |
-| `INGRESS_CLASS_NAME` | `nginx` | Ingress class name. This  depends on your kubernetes cluster and it will be used as value of the `kubernetes.io/ingress.class` annotation on unidled applications (this annotation is set to `disabled` when they're idled) |
 
-In addition to the above optional configuration the server will try to load
-the kubernetes configuration from in-cluster (this is the case when running
-the server within a k8s cluster) and fallback to load it from `~/.kube/config`
-when this fails. If that fails as well the server will not start.
+
+The server will try to load the kubernetes configuration from in-cluster first
+(this is the case when running the server within a k8s cluster) and fallback
+to load it from `~/.kube/config` when this fails.
+
+If that fails as well the server will not start.
 
 
 ## Endpoints
