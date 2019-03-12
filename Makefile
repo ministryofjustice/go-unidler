@@ -1,13 +1,16 @@
-PROJECTNAME := $(shell basename "$(PWD)")
-PORT := 8000
+PROJECTNAME := go-unidler
+PORT := 8080
 GO := CGO_ENABLED=0 go
 
 
 default: static
 
+## dependencies: Vendor/upgrade dependencies
 dependencies:
 	@echo " > Checking dependencies..."
-	@GO111MODULE=on $(GO) mod vendor
+	rm go.sum
+	$(GO) mod vendor
+	$(GO) mod tidy
 
 ## docker-image: Build docker image.
 docker-image:
@@ -30,14 +33,14 @@ run: static
 	@./$(PROJECTNAME)
 
 ## test: Run unit tests.
-test: dependencies
+test:
 	@echo " > Testing..."
 	@${GO} test -v
 
-## race-check: Check for race conditions
+## race-check: Run with Race Detector enabled
 race-check:
-	@echo " > Checking for race conditions..."
-	@go run -race app.go jsonpatch.go k8s.go main.go
+	@echo " > Running with Race Detector enabled..."
+	@go run -race .
 
 # clean: Clean build files. Runs `go clean` internally.
 clean:
