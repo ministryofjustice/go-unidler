@@ -7,57 +7,71 @@ import (
 	"strconv"
 	"strings"
 
-	"k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	appsAPI "k8s.io/api/apps/v1"
+	coreAPI "k8s.io/api/core/v1"
+	metaAPI "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/client-go/kubernetes"
+
+	jp "github.com/ministryofjustice/analytics-platform-go-unidler/jsonpatch"
 )
 
-type (
-	// App is a Analytical Platform "app" consisting of a kubernetes
-	// deployment, with a corresponding hostname and ingress
-	App struct {
-		deployment *Deployment
-		host       string
-		ingress    *Ingress
-		k8s        kubernetes.Interface
-		logger     *log.Logger
-		service    *Service
-	}
+// App is a Analytical Platform "app" consisting of a kubernetes
+// deployment, with a corresponding hostname and ingress
+type App struct {
+	deployment *Deployment
+	host       string
+	ingress    *Ingress
+	logger     *log.Logger
+	service    *Service
+}
+
+const (
+	// IdledLabel is a metadata label which indicates a Deployment is idled.
+	IdledLabel = "mojanalytics.xyz/idled"
+	// IdledAtAnnotation is a metadata annotation which indicates the time a
+	// Deployment was idled and the number of replicas it had at that time,
+	// separated by a semicolon, eg: "2018-11-26T17:27:34;2".
+	IdledAtAnnotation = "mojanalytics.xyz/idled-at"
+	// UnidlerName is the name of the kubernetes Unidler ingress
+	UnidlerName = "unidler"
+	// UnidlerNs is the namespace of the kubernetes Unidler ingress
+	UnidlerNs = "default"
 )
 
 // NewApp constructs a new App and fetches the corresponding kubernetes ingress
 // and deployment
-func NewApp(host string, k kubernetes.Interface) (app *App, err error) {
+func NewApp(host string) (app *App, err error) {
 	app = &App{
 		host:   host,
-		k8s:    k,
 		logger: log.New(os.Stdout, "", log.LstdFlags|log.Lshortfile),
 	}
+
 	app.ingress, err = app.GetIngress()
 	if err != nil {
-		return nil, fmt.Errorf("failed finding ingress for %s: %s", host, err)
+		app.log("Ingress not found: %s", err)
+		return nil, fmt.Errorf("Ingress for your app not found.")
 	}
 	app.deployment, err = app.GetDeployment()
 	if err != nil {
-		return nil, fmt.Errorf("failed finding deployment for %s: %s", host, err)
+		app.log("Deployment not found: %s", err)
+		return nil, fmt.Errorf("Deployment for your app not found.")
 	}
 	app.service, err = app.GetService()
 	if err != nil {
-		return nil, fmt.Errorf("failed finding service for %s: %s", host, err)
+		app.log("Service not found: %s", err)
+		return nil, fmt.Errorf("Service for your app not found.")
 	}
 	return app, nil
 }
 
-func (a *App) log(msg string) {
-	a.logger.Printf("%s: %s", a.host, msg)
+func (a *App) log(format string, args ...interface{}) {
+	a.logger.Printf("%s: %s", a.host, fmt.Sprintf(format, args...))
 }
 
 // GetIngress returns the ingress for the app
 func (a *App) GetIngress() (*Ingress, error) {
 	// Get all ingresses with an app label excluding the unidler ingress
-	all, err := a.k8s.ExtensionsV1beta1().Ingresses("").List(metav1.ListOptions{
+	all, err := k8sClient.ExtensionsV1beta1().Ingresses("").List(metaAPI.ListOptions{
 		FieldSelector: fmt.Sprintf("metadata.name!=%s", UnidlerName),
 		// TODO replace with
 		// LabelSelector: fmt.Sprintf("host=%s", a.host),
@@ -83,11 +97,11 @@ func (a *App) GetIngress() (*Ingress, error) {
 // GetDeployment returns the deployment for the app
 func (a *App) GetDeployment() (*Deployment, error) {
 	// TODO replace with
-	// deps, err := a.k8s.Apps().Deployments("").List(metav1.ListOptions{
+	// deps, err := k8sClient.Apps().Deployments("").List(metaAPI.ListOptions{
 	//     LabelSelector: fmt.Sprintf("host=%s", a.host),
 	// })
-	deps, err := a.k8s.AppsV1().Deployments(a.ingress.Namespace).List(
-		metav1.ListOptions{
+	deps, err := k8sClient.AppsV1().Deployments(a.ingress.Namespace).List(
+		metaAPI.ListOptions{
 			LabelSelector: fmt.Sprintf("app=%s", a.ingress.Labels["app"]),
 		},
 	)
@@ -96,7 +110,7 @@ func (a *App) GetDeployment() (*Deployment, error) {
 	}
 	num := len(deps.Items)
 	if num != 1 {
-		return nil, fmt.Errorf("want 1 deployment, got %d", num)
+		return nil, fmt.Errorf("expected exactly 1 Deployment, found %d", num)
 	}
 
 	a.log("Deployment found")
@@ -107,11 +121,11 @@ func (a *App) GetDeployment() (*Deployment, error) {
 // GetService returns the service for the app
 func (a *App) GetService() (*Service, error) {
 	// TODO replace with
-	// svcs, err := a.k8s.CoreV1().Services("").List(metav1.ListOptions{
+	// svcs, err := k8sClient.CoreV1().Services("").List(metaAPI.ListOptions{
 	//     LabelSelector: fmt.Sprintf("host=%s", a.host),
 	// })
-	svcs, err := a.k8s.CoreV1().Services(a.ingress.Namespace).List(
-		metav1.ListOptions{
+	svcs, err := k8sClient.CoreV1().Services(a.ingress.Namespace).List(
+		metaAPI.ListOptions{
 			LabelSelector: fmt.Sprintf("app=%s", a.ingress.Labels["app"]),
 		},
 	)
@@ -131,6 +145,7 @@ func (a *App) SetReplicas() (err error) {
 	idledAt, exists := a.deployment.Annotations[IdledAtAnnotation]
 	if !exists {
 		// no annotation means the app is not idled, so skip this step
+		a.log("Deployment had '%s' annotation. Assuming is already unidled.", IdledAtAnnotation)
 		return nil
 	}
 
@@ -138,75 +153,88 @@ func (a *App) SetReplicas() (err error) {
 	// TODO remove timestamp and just ParseInt
 	num, err := strconv.ParseInt(strings.Split(idledAt, ",")[1], 10, 32)
 	if err != nil {
-		return fmt.Errorf("failed parsing idled-at annotation: %s", err)
+		a.log("Failed to parse original number of replicas, assuming deployment had 1 replica. Deployment annotation: '%s=%s': %s", IdledAtAnnotation, idledAt, err)
+		num = 1
 	}
 
 	replicas := int32(num)
-	err = a.deployment.Patch(a.k8s, Replace("/spec/replicas", &replicas))
+	patch := jp.Patch(
+		jp.Replace(jp.Path("spec", "replicas"), &replicas),
+	)
+	err = a.deployment.Patch(patch)
 	if err != nil {
-		return fmt.Errorf("failed setting replicas to %d: %s", replicas, err)
+		a.log("Patch to set replicas back to %d failed: %s", replicas, err)
+		return fmt.Errorf("Failed to set your app's replicas back to %d.", replicas)
 	}
 
-	a.log(fmt.Sprintf("Deployment replicas changed to %d", replicas))
+	a.log("Successfully set Deployment's replicas to %d.", replicas)
 	return nil
 }
 
 // RedirectService redirects the App's service from the unidler to the app pods
 func (a *App) RedirectService() error {
-	err := a.service.Patch(
-		a.k8s,
-		Remove("/spec/externalName"),
-		Replace("/spec/type", string(corev1.ServiceTypeClusterIP)),
-		Add("/spec/selector", &map[string]string{
+	patch := jp.Patch(
+		jp.Remove(jp.Path("spec", "externalName")),
+		jp.Replace(jp.Path("spec", "type"), string(coreAPI.ServiceTypeClusterIP)),
+		jp.Add(jp.Path("spec", "selector"), &map[string]string{
 			"app": a.service.Labels["app"],
 		}),
-		Add("/spec/ports", []corev1.ServicePort{
-			corev1.ServicePort{
+		jp.Add(jp.Path("spec", "ports"), []coreAPI.ServicePort{
+			coreAPI.ServicePort{
 				Port:       int32(80),
 				TargetPort: intstr.FromInt(3000),
 			},
 		}),
 	)
+
+	err := a.service.Patch(patch)
 	if err != nil {
 		return fmt.Errorf("failed redirecting service: %s", err)
 	}
 
-	a.log("Service redirected")
+	a.log("Successfully redirected Service back to app's pods.")
 	return nil
 }
 
 // RemoveIdledMetadata removes the App's label and annotation which indicate its
 // idled status, marking it as no longer idled
 func (a *App) RemoveIdledMetadata() (err error) {
-	// TODO change annotation to num-replicas-to-restore and never remove it
-	err = a.deployment.Patch(
-		a.k8s,
-		Remove(JSONPointer("metadata", "annotations", IdledAtAnnotation)),
-		Remove(JSONPointer("metadata", "labels", IdledLabel)),
+	patch := jp.Patch(
+		jp.Remove(jp.Path("metadata", "annotations", IdledAtAnnotation)),
+		jp.Remove(jp.Path("metadata", "labels", IdledLabel)),
 	)
+
+	// TODO change annotation to num-replicas-to-restore and never remove it
+	err = a.deployment.Patch(patch)
 	if err != nil {
+		a.log("Patch to remove idled metadata label/annotation failed: %s", err)
+
 		// ignore missing label or annotation
 		if !strings.Contains(err.Error(), "Unable to remove nonexistent key") {
-			return fmt.Errorf("failed removing idled metadata: %s", err)
+			return fmt.Errorf("Failed to remove idled metadata from your app.")
 		}
 	}
 
-	a.log("Removed idled label/annotation")
+	a.log("Successfully removed idled metadata (label/annotation) from Deployment.")
 	return nil
 }
 
 // WaitForDeployment blocks until the App's Deployment is ready to receive
 // incoming requests
 func (a *App) WaitForDeployment() error {
-	w, err := a.deployment.Watch(a.k8s)
+	userFriendlyError := fmt.Errorf("Failed to wait for for your app to come back up.")
+
+	w, err := a.deployment.Watch()
 	if err != nil {
-		return fmt.Errorf("failed watching deployment: %s", err)
+		a.log("Watch on Deployment failed: %s", err)
+		return userFriendlyError
 	}
 
 	for event := range w.ResultChan() {
-		dep, ok := event.Object.(*v1.Deployment)
+		dep, ok := event.Object.(*appsAPI.Deployment)
 		if !ok {
-			return fmt.Errorf("failed watching deployment: unexpected event type: %+v", event.Object)
+			a.log("Unexpected Watch event type: %+v", event.Object)
+			return userFriendlyError
 		}
 
 		if dep.Status.AvailableReplicas > 0 {
@@ -214,6 +242,6 @@ func (a *App) WaitForDeployment() error {
 		}
 	}
 
-	a.log("Deployment has available replicas")
+	a.log("Successfully waited for Deployment replicas to be available.")
 	return nil
 }

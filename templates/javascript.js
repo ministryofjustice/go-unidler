@@ -3,7 +3,8 @@
   // Delay before redirecting to unidled app
   var DELAY = 5000;
   var url = '/events/';
-  var status = document.getElementById("status");
+  var message = document.getElementById("message");
+
   var urlparams = new URLSearchParams(window.location.search);
   var host = urlparams.get("host");
   if (host) {
@@ -15,27 +16,30 @@
     window.location.href = "https://{{.}}/";
   }
 
-  function updateStatus(msg) {
-    status.innerHTML = msg;
+  function showMessage(msg) {
+    message.innerHTML = msg;
+  }
+
+  function showFinalState(finalState, finalMessage) {
+    source.close();
+
+    var elem = document.getElementById(finalState);
+    elem.classList.remove("hidden");
+
+    showMessage(finalMessage);
   }
 
   source.onmessage = function(e) {
-    updateStatus(e.data);
+    showMessage(e.data);
   };
 
   source.onerror = function (e) {
-		source.close();
-    updateStatus(e.data);
-    var msg  = document.getElementsByClassName("failure")[0];
-    msg.classList.remove("hidden");
+    showFinalState("failure", e.data);
   };
 
   source.addEventListener("success", function (e) {
-		source.close();
-    updateStatus(e.data);
+    showFinalState("success", e.data);
     window.setTimeout(redirect, DELAY);
-    var msg = document.getElementsByClassName("success")[0];
-    msg.classList.remove("hidden");
   }, false);
 })();
 {{end}}

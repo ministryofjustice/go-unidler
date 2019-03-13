@@ -5,21 +5,18 @@
         <h1 class="heading-large">
           Unidling, please wait &hellip;
         </h1>
-        <h2 id="status"></h2>
-        <div class="hidden success">
-          <p>
-          The app was successfully unidled. You should be automatically
-          redirected in a few seconds.
-          </p>
-          <p>
-          Otherwise, <a href="https://{{.}}/">go to the app</a>.
-          </p>
+        <h2 id="message"></h2>
+
+        <div id="success" class="hidden">
+            <p>The app was successfully unidled. You should be automatically redirected in a few seconds.</p>
+            <p>Otherwise, <a href="https://{{.}}/">go to the app</a>.</p>
         </div>
-        <div class="hidden failure error-message">
-          <p>
-          There was a problem unidling the app. Please contact the dev team.
-          </p>
+
+        <div id="failure" class="hidden error-message">
+            <p>There was an issue unidling the app. Refreshing this page could resolve it.</p>
+            <p>If that's not the case, please contact the Analytical Platform team.</p>
         </div>
+
 				{{template "throbber" .}}
       </div>
     </div>
