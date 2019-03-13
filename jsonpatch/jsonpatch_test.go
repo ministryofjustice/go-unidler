@@ -30,8 +30,8 @@ func TestPatch(t *testing.T) {
 	assert := assert.New(t)
 
 	bytes := Patch(
-		Replace([]string{"a", "b", "c"}, "bar"),
-		Remove([]string{"a", "b", "d"}),
+		Replace(Path("a", "b", "c"), "bar"),
+		Remove(Path("a", "b", "d")),
 	)
 
 	assert.Equal(

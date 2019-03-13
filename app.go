@@ -12,7 +12,7 @@ import (
 	metaAPI "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 
-	"github.com/ministryofjustice/analytics-platform-go-unidler/jsonpatch"
+	jp "github.com/ministryofjustice/analytics-platform-go-unidler/jsonpatch"
 )
 
 // App is a Analytical Platform "app" consisting of a kubernetes
@@ -158,8 +158,8 @@ func (a *App) SetReplicas() (err error) {
 	}
 
 	replicas := int32(num)
-	patch := jsonpatch.Patch(
-		jsonpatch.Replace([]string{"spec", "replicas"}, &replicas),
+	patch := jp.Patch(
+		jp.Replace(jp.Path("spec", "replicas"), &replicas),
 	)
 	err = a.deployment.Patch(patch)
 	if err != nil {
@@ -173,13 +173,13 @@ func (a *App) SetReplicas() (err error) {
 
 // RedirectService redirects the App's service from the unidler to the app pods
 func (a *App) RedirectService() error {
-	patch := jsonpatch.Patch(
-		jsonpatch.Remove([]string{"spec", "externalName"}),
-		jsonpatch.Replace([]string{"spec", "type"}, string(coreAPI.ServiceTypeClusterIP)),
-		jsonpatch.Add([]string{"spec", "selector"}, &map[string]string{
+	patch := jp.Patch(
+		jp.Remove(jp.Path("spec", "externalName")),
+		jp.Replace(jp.Path("spec", "type"), string(coreAPI.ServiceTypeClusterIP)),
+		jp.Add(jp.Path("spec", "selector"), &map[string]string{
 			"app": a.service.Labels["app"],
 		}),
-		jsonpatch.Add([]string{"spec", "ports"}, []coreAPI.ServicePort{
+		jp.Add(jp.Path("spec", "ports"), []coreAPI.ServicePort{
 			coreAPI.ServicePort{
 				Port:       int32(80),
 				TargetPort: intstr.FromInt(3000),
@@ -199,9 +199,9 @@ func (a *App) RedirectService() error {
 // RemoveIdledMetadata removes the App's label and annotation which indicate its
 // idled status, marking it as no longer idled
 func (a *App) RemoveIdledMetadata() (err error) {
-	patch := jsonpatch.Patch(
-		jsonpatch.Remove([]string{"metadata", "annotations", IdledAtAnnotation}),
-		jsonpatch.Remove([]string{"metadata", "labels", IdledLabel}),
+	patch := jp.Patch(
+		jp.Remove(jp.Path("metadata", "annotations", IdledAtAnnotation)),
+		jp.Remove(jp.Path("metadata", "labels", IdledLabel)),
 	)
 
 	// TODO change annotation to num-replicas-to-restore and never remove it

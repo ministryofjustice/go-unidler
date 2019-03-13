@@ -2,7 +2,6 @@ package jsonpatch
 
 import (
 	"encoding/json"
-	"fmt"
 	"strings"
 )
 
@@ -42,42 +41,42 @@ func (p *JSONPatch) MarshalJSON() ([]byte, error) {
 }
 
 // Add contructs an Operation object to add the value at `path`
-func Add(path []string, value interface{}) *Operation {
+func Add(path string, value interface{}) *Operation {
 	return &Operation{
 		Name:  "add",
-		Path:  escapePath(path),
+		Path:  path,
 		Value: value,
 	}
 }
 
 // Replace constructs an Operation object to replace the value at `path` with
 // `value`
-func Replace(path []string, value interface{}) *Operation {
+func Replace(path string, value interface{}) *Operation {
 	return &Operation{
 		Name:  "replace",
-		Path:  escapePath(path),
+		Path:  path,
 		Value: value,
 	}
 }
 
 // Remove constructs an Operation object to remove the value at `path`
-func Remove(path []string) *Operation {
+func Remove(path string) *Operation {
 	return &Operation{
 		Name: "remove",
-		Path: escapePath(path),
+		Path: path,
 	}
 }
 
-// escapePath constructs a JSON pointer string from zero or more strings
+// Path constructs a JSON pointer string from zero or more strings
 // representing keys or array indices can be passed to construct the path. "-"
 // can be used to represent the end of an array. Key names are automatically
 // escaped.
-func escapePath(parts []string) string {
+func Path(parts ...string) string {
 	escaped := make([]string, 0, len(parts))
 	for _, part := range parts {
 		escaped = append(escaped, escape(part))
 	}
-	return fmt.Sprintf("/%s", strings.Join(escaped, "/"))
+	return "/" + strings.Join(escaped, "/")
 }
 
 // Escape returns the string formatted for use in a JSON pointer in a JSON
