@@ -35,7 +35,7 @@ run: static
 ## test: Run unit tests.
 test:
 	@echo " > Testing..."
-	@${GO} test -v
+	@${GO} test -v ./...
 
 ## race-check: Run with Race Detector enabled
 race-check:
