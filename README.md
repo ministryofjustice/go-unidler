@@ -31,17 +31,15 @@ Builds and runs the unidler in a docker container
 
 
 ## Configuration
-The application doesn't require much configuration to work.
-`$HOME` is the only required setting:
+The application doesn't require any configuration to work.
 
 | Env variable         | Default |  Details |
 | -------------------- | ------- | -------- |
-| `HOME`               |         | Home where .kube config would be when not using in-cluster config (e.g. when running locally) |
 | `PORT`               | `:8080` | port on which the server listen |
 
-The server will try to load the kubernetes configuration from in-cluster first
-(this is the case when running the server within a k8s cluster) and fallback
-to load it from `~/.kube/config` when this fails.
+**NOTE**: The server will try to load the kubernetes configuration from
+in-cluster first (this is the case when running the server within a k8s
+cluster) and fallback to load it from `$HOME/.kube/config` when this fails.
 
 If that fails as well the server will not start.
 
