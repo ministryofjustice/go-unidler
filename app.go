@@ -189,7 +189,8 @@ func (a *App) RedirectService() error {
 
 	err := a.service.Patch(patch)
 	if err != nil {
-		return fmt.Errorf("failed redirecting service: %s", err)
+		a.log("failed redirecting service: %s", err)
+		return fmt.Errorf("Failed to redirect back your app.")
 	}
 
 	a.log("Successfully redirected Service back to app's pods.")
