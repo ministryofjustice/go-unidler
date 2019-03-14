@@ -157,6 +157,11 @@ func (a *App) SetReplicas() (err error) {
 		num = 1
 	}
 
+	if num < 1 {
+		a.log("Original number of replicas was %d, assuming deployment had 1 replica when unidled: '%s=%s'.", num, IdledAtAnnotation, idledAt)
+		num = 1
+	}
+
 	replicas := int32(num)
 	patch := jp.Patch(
 		jp.Replace(jp.Path("spec", "replicas"), &replicas),
