@@ -34,7 +34,9 @@
   };
 
   source.onerror = function (e) {
-    showFinalState("failure", e.data);
+    if (e.data !== undefined) {
+      showFinalState("failure", e.data);
+    }
   };
 
   source.addEventListener("success", function (e) {
