@@ -145,7 +145,7 @@ func (a *App) SetReplicas() (err error) {
 	idledAt, exists := a.deployment.Annotations[IdledAtAnnotation]
 	if !exists {
 		// no annotation means the app is not idled, so skip this step
-		a.log("Deployment had '%s' annotation. Assuming is already unidled.", IdledAtAnnotation)
+		a.log("Deployment don't have '%s' annotation. Assuming is already unidled.", IdledAtAnnotation)
 		return nil
 	}
 
@@ -211,9 +211,12 @@ func (a *App) RemoveIdledMetadata() (err error) {
 		a.log("Patch to remove idled metadata label/annotation failed: %s", err)
 
 		// ignore missing label or annotation
-		if !strings.Contains(err.Error(), "Unable to remove nonexistent key") {
-			return fmt.Errorf("Failed to remove idled metadata from your app.")
+		if strings.Contains(err.Error(), "Unable to remove nonexistent key") {
+			a.log("Ignored Deployment Patch error caused by nonexistent key")
+			return nil
 		}
+
+		return fmt.Errorf("Failed to remove idled metadata from your app.")
 	}
 
 	a.log("Successfully removed idled metadata (label/annotation) from Deployment.")
