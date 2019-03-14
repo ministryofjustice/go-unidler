@@ -59,7 +59,7 @@ func (d *Deployment) Patch(patch []byte) error {
 		patch,
 	)
 	if err != nil {
-		return fmt.Errorf("Patch on Deployment failed:: %s", err)
+		return fmt.Errorf("Patch on Deployment failed: %s", err)
 	}
 
 	return nil
