@@ -46,7 +46,7 @@ func eventsHandler(w http.ResponseWriter, req *http.Request) {
 		sendError(s, err)
 		return
 	}
-	sendMessage(s, "3/6: Replicas restored. Waiting for app to be ready...")
+	sendMessage(s, "3/6: Replicas restored. Starting app. This could take a few minutes...")
 
 	err = app.WaitForDeployment()
 	if err != nil {
