@@ -194,7 +194,14 @@ func (a *App) RedirectService() error {
 
 	err := a.service.Patch(patch)
 	if err != nil {
-		a.log("failed redirecting service: %s", err)
+		a.log("Patch to Service failed: %s", err)
+
+		// ignore missing label or annotation
+		if strings.Contains(err.Error(), "Unable to remove nonexistent key") {
+			a.log("Ignored Service Patch error caused by nonexistent key.")
+			return nil
+		}
+
 		return fmt.Errorf("Failed to redirect back your app.")
 	}
 
@@ -217,7 +224,7 @@ func (a *App) RemoveIdledMetadata() (err error) {
 
 		// ignore missing label or annotation
 		if strings.Contains(err.Error(), "Unable to remove nonexistent key") {
-			a.log("Ignored Deployment Patch error caused by nonexistent key")
+			a.log("Ignored Deployment Patch error caused by nonexistent key.")
 			return nil
 		}
 
