@@ -32,35 +32,35 @@ func eventsHandler(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	s.Flush()
 
-	sendMessage(s, "1/6: Starting unidling...")
+	sendMessage(s, "Starting unidling...")
 
 	app, err := NewApp(req.Host)
 	if err != nil {
 		sendError(s, err)
 		return
 	}
-	sendMessage(s, "2/6: App found. Unidling it...")
+	sendMessage(s, "App found. Unidling it...")
 
 	err = app.SetReplicas()
 	if err != nil {
 		sendError(s, err)
 		return
 	}
-	sendMessage(s, "3/6: Replicas restored. Starting app. This could take a few minutes...")
+	sendMessage(s, "Replicas restored. Starting app. This could take a few minutes...")
 
 	err = app.WaitForDeployment()
 	if err != nil {
 		sendError(s, err)
 		return
 	}
-	sendMessage(s, "4/6: App ready. Removing idled metadata...")
+	sendMessage(s, "App ready. Removing idled metadata...")
 
 	err = app.RemoveIdledMetadata()
 	if err != nil {
 		sendError(s, err)
 		return
 	}
-	sendMessage(s, "5/6: Redirecting app...")
+	sendMessage(s, "Redirecting app...")
 
 	err = app.RedirectService()
 	if err != nil {
