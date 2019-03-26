@@ -32,6 +32,9 @@ const (
 	// Deployment was idled and the number of replicas it had at that time,
 	// separated by a semicolon, eg: "2018-11-26T17:27:34;2".
 	IdledAtAnnotation = "mojanalytics.xyz/idled-at"
+	// ReplicasWhenUnidledAnnotation contains the number of replicas an app
+	// had before being idled
+	ReplicasWhenUnidledAnnotation = "mojanalytics.xyz/replicas-when-unidled"
 	// UnidlerName is the name of the kubernetes Unidler ingress
 	UnidlerName = "unidler"
 	// UnidlerNs is the namespace of the kubernetes Unidler ingress
@@ -129,29 +132,36 @@ func (a *App) GetService() (*Service, error) {
 	return &svc, nil
 }
 
-// SetReplicas updates an App's number of replicas to the specified number
-func (a *App) SetReplicas() (err error) {
-	// TODO change the annotation to number-of-replicas-when-not-idled and
-	//      never remove it
-	idledAt, exists := a.deployment.Annotations[IdledAtAnnotation]
+// GetReplicasWhenUnidled return the number of replicas when app is unidled
+func (a *App) GetReplicasWhenUnidled() (replicas int) {
+	replicasWhenUnidled, exists := a.deployment.Annotations[ReplicasWhenUnidledAnnotation]
 	if !exists {
-		// no annotation means the app is not idled, so skip this step
-		a.log("Deployment don't have '%s' annotation. Assuming is already unidled.", IdledAtAnnotation)
-		return nil
+		a.log("Deployment doesn't have '%s' annotation. Assuming it had 1 replica when it was unidled.", ReplicasWhenUnidledAnnotation)
+		return 1
 	}
 
-	// the idled-at annotation value is in the form <TIMESTAMP>,<NUM-REPLICAS>
-	// TODO remove timestamp and just ParseInt
-	num, err := strconv.ParseInt(strings.Split(idledAt, ",")[1], 10, 32)
+	num, err := strconv.ParseInt(replicasWhenUnidled, 10, 32)
 	if err != nil {
-		a.log("Failed to parse original number of replicas, assuming deployment had 1 replica. Deployment annotation: '%s=%s': %s", IdledAtAnnotation, idledAt, err)
-		num = 1
+		a.log("Failed to parse number of replicas when unidled, assuming Deployment had 1 replica. Deployment annotation: '%s=%s': %s", ReplicasWhenUnidledAnnotation, replicasWhenUnidled, err)
+		return 1
 	}
 
 	if num < 1 {
-		a.log("Original number of replicas was %d, assuming deployment had 1 replica when unidled: '%s=%s'.", num, IdledAtAnnotation, idledAt)
-		num = 1
+		a.log("Replicas when unidled was %d, assuming Deployment had 1 replica: '%s=%s'.", num, ReplicasWhenUnidledAnnotation, replicasWhenUnidled)
+		return 1
 	}
+
+	return int(num)
+}
+
+// SetReplicas updates an App's number of replicas to the specified number
+func (a *App) SetReplicas() (err error) {
+	if *a.deployment.Spec.Replicas > 0 {
+		a.log("Deployment's replicas is already %d. Assuming is already unidled.", *a.deployment.Spec.Replicas)
+		return nil
+	}
+
+	num := a.GetReplicasWhenUnidled()
 
 	replicas := int32(num)
 	patch := jp.Patch(
@@ -205,6 +215,7 @@ func (a *App) RedirectService() error {
 func (a *App) RemoveIdledMetadata() (err error) {
 	patch := jp.Patch(
 		jp.Remove(jp.Path("metadata", "annotations", IdledAtAnnotation)),
+		jp.Remove(jp.Path("metadata", "annotations", ReplicasWhenUnidledAnnotation)),
 		jp.Remove(jp.Path("metadata", "labels", IdledLabel)),
 	)
 
