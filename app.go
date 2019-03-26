@@ -70,70 +70,61 @@ func (a *App) log(format string, args ...interface{}) {
 
 // GetIngress returns the ingress for the app
 func (a *App) GetIngress() (*Ingress, error) {
-	// Get all ingresses with an app label excluding the unidler ingress
-	all, err := k8sClient.ExtensionsV1beta1().Ingresses("").List(metaAPI.ListOptions{
-		FieldSelector: fmt.Sprintf("metadata.name!=%s", UnidlerName),
-		// TODO replace with
-		// LabelSelector: fmt.Sprintf("host=%s", a.host),
-		LabelSelector: "app",
+	// Get ingresses with app host label
+	ings, err := k8sClient.ExtensionsV1beta1().Ingresses("").List(metaAPI.ListOptions{
+		LabelSelector: fmt.Sprintf("host=%s", a.host),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed listing ingresses: %s", err)
 	}
 
-	// Search the list for an ingress with has a rule for the specified host.
-	// TODO remove
-	for _, ing := range all.Items {
-		if ing.Spec.Rules[0].Host == a.host {
-			a.log("Ingress found")
-			ingress := Ingress(ing)
-			return &ingress, nil
-		}
+	count := len(ings.Items)
+	if count != 1 {
+		return nil, fmt.Errorf("expected exactly 1 Ingress with host label, found %d", count)
 	}
 
-	return nil, fmt.Errorf("no ingress for host: %s", a.host)
+	a.log("Ingress found.")
+	ingress := Ingress(ings.Items[0])
+	return &ingress, nil
 }
 
 // GetDeployment returns the deployment for the app
 func (a *App) GetDeployment() (*Deployment, error) {
-	// TODO replace with
-	// deps, err := k8sClient.Apps().Deployments("").List(metaAPI.ListOptions{
-	//     LabelSelector: fmt.Sprintf("host=%s", a.host),
-	// })
 	deps, err := k8sClient.AppsV1().Deployments(a.ingress.Namespace).List(
 		metaAPI.ListOptions{
-			LabelSelector: fmt.Sprintf("app=%s", a.ingress.Labels["app"]),
+			LabelSelector: fmt.Sprintf("host=%s", a.host),
 		},
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed listing deployments: %s", err)
 	}
-	num := len(deps.Items)
-	if num != 1 {
-		return nil, fmt.Errorf("expected exactly 1 Deployment, found %d", num)
+	count := len(deps.Items)
+	if count != 1 {
+		return nil, fmt.Errorf("expected exactly 1 Deployment with host label, found %d", count)
 	}
 
-	a.log("Deployment found")
+	a.log("Deployment found.")
 	dep := Deployment(deps.Items[0])
 	return &dep, nil
 }
 
 // GetService returns the service for the app
 func (a *App) GetService() (*Service, error) {
-	// TODO replace with
-	// svcs, err := k8sClient.CoreV1().Services("").List(metaAPI.ListOptions{
-	//     LabelSelector: fmt.Sprintf("host=%s", a.host),
-	// })
 	svcs, err := k8sClient.CoreV1().Services(a.ingress.Namespace).List(
 		metaAPI.ListOptions{
-			LabelSelector: fmt.Sprintf("app=%s", a.ingress.Labels["app"]),
+			LabelSelector: fmt.Sprintf("host=%s", a.host),
 		},
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed listing deployments: %s", err)
+		return nil, fmt.Errorf("failed listing services: %s", err)
 	}
 
-	a.log("Service found")
+	count := len(svcs.Items)
+	if count != 1 {
+		return nil, fmt.Errorf("expected exactly 1 Service with host label, found %d", count)
+	}
+
+	a.log("Service found.")
 	svc := Service(svcs.Items[0])
 	return &svc, nil
 }
