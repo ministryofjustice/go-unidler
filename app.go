@@ -32,6 +32,9 @@ const (
 	// Deployment was idled and the number of replicas it had at that time,
 	// separated by a semicolon, eg: "2018-11-26T17:27:34;2".
 	IdledAtAnnotation = "mojanalytics.xyz/idled-at"
+	// ReplicasWhenUnidledAnnotation contains the number of replicas an app
+	// had before being idled
+	ReplicasWhenUnidledAnnotation = "mojanalytics.xyz/replicas-when-unidled"
 	// UnidlerName is the name of the kubernetes Unidler ingress
 	UnidlerName = "unidler"
 	// UnidlerNs is the namespace of the kubernetes Unidler ingress
@@ -70,97 +73,95 @@ func (a *App) log(format string, args ...interface{}) {
 
 // GetIngress returns the ingress for the app
 func (a *App) GetIngress() (*Ingress, error) {
-	// Get all ingresses with an app label excluding the unidler ingress
-	all, err := k8sClient.ExtensionsV1beta1().Ingresses("").List(metaAPI.ListOptions{
-		FieldSelector: fmt.Sprintf("metadata.name!=%s", UnidlerName),
-		// TODO replace with
-		// LabelSelector: fmt.Sprintf("host=%s", a.host),
-		LabelSelector: "app",
+	// Get ingresses with app host label
+	ings, err := k8sClient.ExtensionsV1beta1().Ingresses("").List(metaAPI.ListOptions{
+		LabelSelector: fmt.Sprintf("host=%s", a.host),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed listing ingresses: %s", err)
 	}
 
-	// Search the list for an ingress with has a rule for the specified host.
-	// TODO remove
-	for _, ing := range all.Items {
-		if ing.Spec.Rules[0].Host == a.host {
-			a.log("Ingress found")
-			ingress := Ingress(ing)
-			return &ingress, nil
-		}
+	count := len(ings.Items)
+	if count != 1 {
+		return nil, fmt.Errorf("expected exactly 1 Ingress with host label, found %d", count)
 	}
 
-	return nil, fmt.Errorf("no ingress for host: %s", a.host)
+	a.log("Ingress found.")
+	ingress := Ingress(ings.Items[0])
+	return &ingress, nil
 }
 
 // GetDeployment returns the deployment for the app
 func (a *App) GetDeployment() (*Deployment, error) {
-	// TODO replace with
-	// deps, err := k8sClient.Apps().Deployments("").List(metaAPI.ListOptions{
-	//     LabelSelector: fmt.Sprintf("host=%s", a.host),
-	// })
 	deps, err := k8sClient.AppsV1().Deployments(a.ingress.Namespace).List(
 		metaAPI.ListOptions{
-			LabelSelector: fmt.Sprintf("app=%s", a.ingress.Labels["app"]),
+			LabelSelector: fmt.Sprintf("host=%s", a.host),
 		},
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed listing deployments: %s", err)
 	}
-	num := len(deps.Items)
-	if num != 1 {
-		return nil, fmt.Errorf("expected exactly 1 Deployment, found %d", num)
+	count := len(deps.Items)
+	if count != 1 {
+		return nil, fmt.Errorf("expected exactly 1 Deployment with host label, found %d", count)
 	}
 
-	a.log("Deployment found")
+	a.log("Deployment found.")
 	dep := Deployment(deps.Items[0])
 	return &dep, nil
 }
 
 // GetService returns the service for the app
 func (a *App) GetService() (*Service, error) {
-	// TODO replace with
-	// svcs, err := k8sClient.CoreV1().Services("").List(metaAPI.ListOptions{
-	//     LabelSelector: fmt.Sprintf("host=%s", a.host),
-	// })
 	svcs, err := k8sClient.CoreV1().Services(a.ingress.Namespace).List(
 		metaAPI.ListOptions{
-			LabelSelector: fmt.Sprintf("app=%s", a.ingress.Labels["app"]),
+			LabelSelector: fmt.Sprintf("host=%s", a.host),
 		},
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed listing deployments: %s", err)
+		return nil, fmt.Errorf("failed listing services: %s", err)
 	}
 
-	a.log("Service found")
+	count := len(svcs.Items)
+	if count != 1 {
+		return nil, fmt.Errorf("expected exactly 1 Service with host label, found %d", count)
+	}
+
+	a.log("Service found.")
 	svc := Service(svcs.Items[0])
 	return &svc, nil
 }
 
-// SetReplicas updates an App's number of replicas to the specified number
-func (a *App) SetReplicas() (err error) {
-	// TODO change the annotation to number-of-replicas-when-not-idled and
-	//      never remove it
-	idledAt, exists := a.deployment.Annotations[IdledAtAnnotation]
+// GetReplicasWhenUnidled return the number of replicas when app is unidled
+func (a *App) GetReplicasWhenUnidled() (replicas int) {
+	replicasWhenUnidled, exists := a.deployment.Annotations[ReplicasWhenUnidledAnnotation]
 	if !exists {
-		// no annotation means the app is not idled, so skip this step
-		a.log("Deployment don't have '%s' annotation. Assuming is already unidled.", IdledAtAnnotation)
-		return nil
+		a.log("Deployment doesn't have '%s' annotation. Assuming it had 1 replica when it was unidled.", ReplicasWhenUnidledAnnotation)
+		return 1
 	}
 
-	// the idled-at annotation value is in the form <TIMESTAMP>,<NUM-REPLICAS>
-	// TODO remove timestamp and just ParseInt
-	num, err := strconv.ParseInt(strings.Split(idledAt, ",")[1], 10, 32)
+	num, err := strconv.ParseInt(replicasWhenUnidled, 10, 32)
 	if err != nil {
-		a.log("Failed to parse original number of replicas, assuming deployment had 1 replica. Deployment annotation: '%s=%s': %s", IdledAtAnnotation, idledAt, err)
-		num = 1
+		a.log("Failed to parse number of replicas when unidled, assuming Deployment had 1 replica. Deployment annotation: '%s=%s': %s", ReplicasWhenUnidledAnnotation, replicasWhenUnidled, err)
+		return 1
 	}
 
 	if num < 1 {
-		a.log("Original number of replicas was %d, assuming deployment had 1 replica when unidled: '%s=%s'.", num, IdledAtAnnotation, idledAt)
-		num = 1
+		a.log("Replicas when unidled was %d, assuming Deployment had 1 replica: '%s=%s'.", num, ReplicasWhenUnidledAnnotation, replicasWhenUnidled)
+		return 1
 	}
+
+	return int(num)
+}
+
+// SetReplicas updates an App's number of replicas to the specified number
+func (a *App) SetReplicas() (err error) {
+	if *a.deployment.Spec.Replicas > 0 {
+		a.log("Deployment's replicas is already %d. Assuming is already unidled.", *a.deployment.Spec.Replicas)
+		return nil
+	}
+
+	num := a.GetReplicasWhenUnidled()
 
 	replicas := int32(num)
 	patch := jp.Patch(
@@ -214,6 +215,7 @@ func (a *App) RedirectService() error {
 func (a *App) RemoveIdledMetadata() (err error) {
 	patch := jp.Patch(
 		jp.Remove(jp.Path("metadata", "annotations", IdledAtAnnotation)),
+		jp.Remove(jp.Path("metadata", "annotations", ReplicasWhenUnidledAnnotation)),
 		jp.Remove(jp.Path("metadata", "labels", IdledLabel)),
 	)
 

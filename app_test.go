@@ -79,7 +79,7 @@ func TestRedirectService(t *testing.T) {
 func TestRemoveIdledMetadata(t *testing.T) {
 	// Check: We have idled metadata
 	assert.True(t, hasIdledLabel(deploy))
-	assert.True(t, hasIdledAtAnnotation(deploy))
+	assert.True(t, hasReplicasAnnotation(deploy))
 
 	err := app.RemoveIdledMetadata()
 
@@ -87,7 +87,7 @@ func TestRemoveIdledMetadata(t *testing.T) {
 	deploy = getDeployment(NS, NAME)
 	// XXX fake patch doesn't remove
 	// assert.False(t, hasIdledLabel(deploy))
-	// assert.False(t, hasIdledAtAnnotation(deploy))
+	// assert.False(t, hasReplicasAnnotation(deploy))
 }
 
 func hasIdledLabel(deploy Deployment) bool {
@@ -95,8 +95,8 @@ func hasIdledLabel(deploy Deployment) bool {
 	return ok
 }
 
-func hasIdledAtAnnotation(dep Deployment) bool {
-	_, ok := deploy.Annotations[IdledAtAnnotation]
+func hasReplicasAnnotation(dep Deployment) bool {
+	_, ok := deploy.Annotations[ReplicasWhenUnidledAnnotation]
 	return ok
 }
 
@@ -115,7 +115,7 @@ func mockDeployment(client k8s.Interface, ns string, name string, host string) D
 	deploy, _ := client.Apps().Deployments(ns).Create(&appsAPI.Deployment{
 		ObjectMeta: metaAPI.ObjectMeta{
 			Annotations: map[string]string{
-				IdledAtAnnotation: "2018-12-10T12:34:56Z,1",
+				ReplicasWhenUnidledAnnotation: "1",
 			},
 			Name: name,
 			Labels: map[string]string{
