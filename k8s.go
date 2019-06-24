@@ -55,7 +55,7 @@ func loadConfig(path string) (config *rest.Config, err error) {
 func (d *Deployment) Patch(patch []byte) error {
 	_, err := k8sClient.Apps().Deployments(d.Namespace).Patch(
 		d.Name,
-		types.JSONPatchType,
+		types.StrategicMergePatchType,
 		patch,
 	)
 	if err != nil {
@@ -69,7 +69,7 @@ func (d *Deployment) Patch(patch []byte) error {
 func (svc *Service) Patch(patch []byte) error {
 	_, err := k8sClient.CoreV1().Services(svc.Namespace).Patch(
 		svc.Name,
-		types.JSONPatchType,
+		types.StrategicMergePatchType,
 		patch,
 	)
 	if err != nil {

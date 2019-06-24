@@ -5,14 +5,10 @@ import (
 	"log"
 	"os"
 	"strconv"
-	"strings"
 
 	appsAPI "k8s.io/api/apps/v1"
 	coreAPI "k8s.io/api/core/v1"
 	metaAPI "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/intstr"
-
-	jp "github.com/ministryofjustice/analytics-platform-go-unidler/jsonpatch"
 )
 
 // App is a Analytical Platform "app" consisting of a kubernetes
@@ -161,13 +157,16 @@ func (a *App) SetReplicas() (err error) {
 		return nil
 	}
 
-	num := a.GetReplicasWhenUnidled()
-
-	replicas := int32(num)
-	patch := jp.Patch(
-		jp.Replace(jp.Path("spec", "replicas"), &replicas),
+	replicas := a.GetReplicasWhenUnidled()
+	patch := fmt.Sprintf(`{
+			"spec": {
+				"replicas": %d
+			}
+		}`,
+		replicas,
 	)
-	err = a.deployment.Patch(patch)
+
+	err = a.deployment.Patch([]byte(patch))
 	if err != nil {
 		a.log("Patch to set replicas back to %d failed: %s", replicas, err)
 		return fmt.Errorf("Failed to set your app's replicas back to %d.", replicas)
@@ -179,30 +178,28 @@ func (a *App) SetReplicas() (err error) {
 
 // RedirectService redirects the App's service from the unidler to the app pods
 func (a *App) RedirectService() error {
-	patch := jp.Patch(
-		jp.Remove(jp.Path("spec", "externalName")),
-		jp.Replace(jp.Path("spec", "type"), string(coreAPI.ServiceTypeClusterIP)),
-		jp.Add(jp.Path("spec", "selector"), &map[string]string{
-			"app": a.service.Labels["app"],
-		}),
-		jp.Add(jp.Path("spec", "ports"), []coreAPI.ServicePort{
-			coreAPI.ServicePort{
-				Port:       int32(80),
-				TargetPort: intstr.FromInt(3000),
-			},
-		}),
+	patch := fmt.Sprintf(`{
+			"spec": {
+				"externalName": null,
+				"type": "%s",
+				"selector": {
+					"app": "%s"
+				},
+				"ports": [
+					{
+						"port": 80,
+						"targetPort": 3000
+					}
+				]
+			}
+		}`,
+		coreAPI.ServiceTypeClusterIP,
+		a.service.Labels["app"],
 	)
 
-	err := a.service.Patch(patch)
+	err := a.service.Patch([]byte(patch))
 	if err != nil {
 		a.log("Patch to Service failed: %s", err)
-
-		// ignore missing label or annotation
-		if strings.Contains(err.Error(), "Unable to remove nonexistent key") {
-			a.log("Ignored Service Patch error caused by nonexistent key.")
-			return nil
-		}
-
 		return fmt.Errorf("Failed to redirect back your app.")
 	}
 
@@ -213,23 +210,25 @@ func (a *App) RedirectService() error {
 // RemoveIdledMetadata removes the App's label and annotation which indicate its
 // idled status, marking it as no longer idled
 func (a *App) RemoveIdledMetadata() (err error) {
-	patch := jp.Patch(
-		jp.Remove(jp.Path("metadata", "annotations", IdledAtAnnotation)),
-		jp.Remove(jp.Path("metadata", "annotations", ReplicasWhenUnidledAnnotation)),
-		jp.Remove(jp.Path("metadata", "labels", IdledLabel)),
+	patch := fmt.Sprintf(`{
+			"metadata": {
+				"annotations": {
+					"%s": null,
+					"%s": null
+				},
+				"labels": {
+					"%s": null
+				}
+			}
+		}`,
+		IdledAtAnnotation,
+		ReplicasWhenUnidledAnnotation,
+		IdledLabel,
 	)
 
-	// TODO change annotation to num-replicas-to-restore and never remove it
-	err = a.deployment.Patch(patch)
+	err = a.deployment.Patch([]byte(patch))
 	if err != nil {
 		a.log("Patch to remove idled metadata label/annotation failed: %s", err)
-
-		// ignore missing label or annotation
-		if strings.Contains(err.Error(), "Unable to remove nonexistent key") {
-			a.log("Ignored Deployment Patch error caused by nonexistent key.")
-			return nil
-		}
-
 		return fmt.Errorf("Failed to remove idled metadata from your app.")
 	}
 
