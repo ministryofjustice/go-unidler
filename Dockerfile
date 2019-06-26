@@ -12,7 +12,6 @@ RUN apk update \
 WORKDIR /go/src/github.com/ministryofjustice/analytics-platform-go-unidler
 
 COPY vendor/ vendor/
-COPY jsonpatch/ jsonpatch/
 COPY templates/ templates/
 COPY Makefile ./
 COPY *.go ./
