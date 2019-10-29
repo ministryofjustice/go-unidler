@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -169,4 +170,12 @@ func mockService(k k8s.Interface, ns string, name string, host string) Service {
 		},
 	})
 	return Service(*svc)
+}
+
+func TestTruncateLabel(t *testing.T) {
+	short := "example.com"
+	long := strings.Repeat("x", 100)
+
+	assert.Equal(t, truncateLabel(short), short)
+	assert.Equal(t, truncateLabel(long), long[0:63])
 }
