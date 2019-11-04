@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 
 	appsAPI "k8s.io/api/apps/v1"
 	coreAPI "k8s.io/api/core/v1"
@@ -67,22 +68,22 @@ func (a *App) log(format string, args ...interface{}) {
 	a.logger.Printf("%s: %s", a.host, fmt.Sprintf(format, args...))
 }
 
-func truncateLabel(label string) string {
-	// k8s labels can be max 63 characters
-	const maxLabelLength = 63
-
-	if len(label) > maxLabelLength {
-		return label[0:maxLabelLength]
+// Key used in label selector to find app's resources
+func unidleKey(host string) string {
+	// TODO: Just return value inside `if` block once `alpha` cluster is retired
+	if UnidleKeyLabel == "unidle-key" {
+		// NOTE: This is the behaviour we want in new `prod` cluster
+		return strings.Split(host, ".")[0]
 	}
 
-	return label
+	return host
 }
 
 // GetIngress returns the ingress for the app
 func (a *App) GetIngress() (*Ingress, error) {
 	// Get ingresses with app host label
 	ings, err := k8sClient.ExtensionsV1beta1().Ingresses("").List(metaAPI.ListOptions{
-		LabelSelector: fmt.Sprintf("host=%s", truncateLabel(a.host)),
+		LabelSelector: fmt.Sprintf("%s=%s", UnidleKeyLabel, unidleKey(a.host)),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed listing ingresses: %s", err)
@@ -102,7 +103,7 @@ func (a *App) GetIngress() (*Ingress, error) {
 func (a *App) GetDeployment() (*Deployment, error) {
 	deps, err := k8sClient.AppsV1().Deployments(a.ingress.Namespace).List(
 		metaAPI.ListOptions{
-			LabelSelector: fmt.Sprintf("host=%s", truncateLabel(a.host)),
+			LabelSelector: fmt.Sprintf("%s=%s", UnidleKeyLabel, unidleKey(a.host)),
 		},
 	)
 	if err != nil {
@@ -122,7 +123,7 @@ func (a *App) GetDeployment() (*Deployment, error) {
 func (a *App) GetService() (*Service, error) {
 	svcs, err := k8sClient.CoreV1().Services(a.ingress.Namespace).List(
 		metaAPI.ListOptions{
-			LabelSelector: fmt.Sprintf("host=%s", truncateLabel(a.host)),
+			LabelSelector: fmt.Sprintf("%s=%s", UnidleKeyLabel, unidleKey(a.host)),
 		},
 	)
 	if err != nil {

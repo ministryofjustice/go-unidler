@@ -1,8 +1,6 @@
 package main
 
 import (
-	"fmt"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -17,9 +15,10 @@ import (
 )
 
 const (
-	HOST = "test-tool.example.com"
-	NS   = "test-ns"
-	NAME = "test"
+	HOST       = "test-tool.example.com"
+	NS         = "test-ns"
+	NAME       = "test"
+	UNIDLE_KEY = "test-tool"
 )
 
 var (
@@ -30,7 +29,7 @@ var (
 )
 
 func init() {
-	fmt.Println("DEBUG: testing.go init()...")
+	UnidleKeyLabel = "unidle-key"
 
 	k8sClient = k8sFake.NewSimpleClientset()
 
@@ -120,9 +119,10 @@ func mockDeployment(client k8s.Interface, ns string, name string, host string) D
 			},
 			Name: name,
 			Labels: map[string]string{
-				"app":      name,
-				"host":     host,
-				IdledLabel: "true",
+				"app":        name,
+				"host":       host,
+				"unidle-key": UNIDLE_KEY,
+				IdledLabel:   "true",
 			},
 		},
 		Spec: appsAPI.DeploymentSpec{
@@ -137,8 +137,9 @@ func mockIngress(client k8s.Interface, ns string, name string, host string) Ingr
 		ObjectMeta: metaAPI.ObjectMeta{
 			Name: name,
 			Labels: map[string]string{
-				"app":  name,
-				"host": host,
+				"app":        name,
+				"host":       host,
+				"unidle-key": UNIDLE_KEY,
 			},
 			Annotations: map[string]string{
 				"kubernetes.io/ingress.class": "disabled",
@@ -160,8 +161,9 @@ func mockService(k k8s.Interface, ns string, name string, host string) Service {
 		ObjectMeta: metaAPI.ObjectMeta{
 			Name: name,
 			Labels: map[string]string{
-				"app":  name,
-				"host": host,
+				"app":        name,
+				"host":       host,
+				"unidle-key": UNIDLE_KEY,
 			},
 		},
 		Spec: coreAPI.ServiceSpec{
@@ -172,10 +174,18 @@ func mockService(k k8s.Interface, ns string, name string, host string) Service {
 	return Service(*svc)
 }
 
-func TestTruncateLabel(t *testing.T) {
-	short := "example.com"
-	long := strings.Repeat("x", 100)
+func TestUnidleKey(t *testing.T) {
+	testCases := []struct {
+		unidleKeyLabel string
+		host           string
+		unidleKey      string
+	}{
+		{unidleKeyLabel: "host", host: "foo.example.com", unidleKey: "foo.example.com"},
+		{unidleKeyLabel: "unidle-key", host: "foo.example.com", unidleKey: "foo"},
+	}
 
-	assert.Equal(t, truncateLabel(short), short)
-	assert.Equal(t, truncateLabel(long), long[0:63])
+	for _, tc := range testCases {
+		UnidleKeyLabel = tc.unidleKeyLabel
+		assert.Equal(t, unidleKey(tc.host), tc.unidleKey)
+	}
 }

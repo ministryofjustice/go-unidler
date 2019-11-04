@@ -13,11 +13,15 @@ import (
 
 const DEFAULT_PORT = ":8080"
 
+// TODO: Remove once `alpha` cease to exist
+const DEFAULT_UNIDLE_KEY_LABEL = "host"
+
 var (
 	logger         *log.Logger
 	k8sClient      k8s.Interface
 	indexTemplates *template.Template
 	err            error
+	UnidleKeyLabel string
 )
 
 func init() {
@@ -44,6 +48,15 @@ func main() {
 	home, ok := os.LookupEnv("HOME")
 	if !ok {
 		logger.Fatalf("$HOME not set. It couldn't determine HOME directory.")
+	}
+
+	// NOTE: Default to `host` for retro-compatibility with `alpha` cluster
+	// TODO: Remove logic and always use `unidle-key` label once migration to
+	//       `prod`/new domain is completed
+	UnidleKeyLabel, ok = os.LookupEnv("UNIDLE_KEY_LABEL")
+	if !ok {
+		logger.Printf("$UNIDLE_KEY_LABEL not set. Defaulting to '%s'", DEFAULT_UNIDLE_KEY_LABEL)
+		UnidleKeyLabel = DEFAULT_UNIDLE_KEY_LABEL
 	}
 
 	k8sClient, err = KubernetesClient(filepath.Join(home, ".kube", "config"))

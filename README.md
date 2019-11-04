@@ -33,9 +33,10 @@ Builds and runs the unidler in a docker container
 ## Configuration
 The application doesn't require any configuration to work.
 
-| Env variable         | Default |  Details |
-| -------------------- | ------- | -------- |
-| `PORT`               | `:8080` | port on which the server listen |
+| Env variable         | Default  |  Details |
+| -------------------- | -------- | -------- |
+| `PORT`               | `:8080`  | port on which the server listen |
+| `UNIDLE_KEY_LABEL`   | `"host"` | label used to find kubernetes resources belonging to app to unidle. This is introduced to maintain compatibility with old `alpha` cluster. Set to `"unidle-key"` in new `prod`. **TODO**: Remove once `alpha` cluster is retired |
 
 **NOTE**: The server will try to load the kubernetes configuration from
 in-cluster first (this is the case when running the server within a k8s
