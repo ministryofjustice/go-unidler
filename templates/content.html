@@ -1,24 +1,19 @@
 {{define "content"}}
-    <main id="content" role="main">
-    <div class="grid-row">
-      <div class="column-two-thirds">
-        <h1 class="heading-large">
-          Unidling, please wait &hellip;
-        </h1>
-        <h2 id="message"></h2>
+  <header>
+    <h1 class="govuk-heading-xl">Unidling, please wait &hellip;</h1>
+  </header>
 
-        <div id="success" class="hidden">
-            <p>The app was successfully unidled. You should be automatically redirected in a few seconds.</p>
-            <p>Otherwise, <a href="https://{{.}}/">go to the app</a>.</p>
-        </div>
+  <h2 class="govuk-heading-m" id="message"></h2>
 
-        <div id="failure" class="hidden error-message">
-            <p>There was an issue unidling the app. Refreshing this page could resolve it.</p>
-            <p>If that's not the case, please contact the Analytical Platform team.</p>
-        </div>
+  <div id="success" class="hidden">
+    <p class="govuk-body">The app was successfully unidled. You should be automatically redirected in a few seconds.</p>
+    <p class="govuk-body">Otherwise, <a href="https://{{.}}/">go to the app</a>.</p>
+  </div>
 
-				{{template "throbber" .}}
-      </div>
-    </div>
-    </main>
+  <div id="failure" class="hidden error-message">
+    <p class="govuk-body">There was an issue unidling the app. Refreshing this page could resolve it.</p>
+    <p class="govuk-body">If that's not the case, please contact the Analytical Platform team.</p>
+  </div>
+
+  {{template "throbber" .}}
 {{end}}
