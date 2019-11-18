@@ -1,3 +1,5 @@
+[![Docker Repository on Quay](https://quay.io/repository/mojanalytics/go-unidler/status "Docker Repository on Quay")](https://quay.io/repository/mojanalytics/go-unidler)
+
 # go-unidler
 Unidle idled tools
 
