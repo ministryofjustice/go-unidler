@@ -84,24 +84,30 @@ responding.
 
 ## Dependencies
 
-Dependencies are managed using [Go Modules](https://github.com/golang/go/wiki/Modules).
+Dependencies are managed [Using Go Modules](https://blog.golang.org/using-go-modules).
 
 Dependences are vendored in the `/vendor` which is checked in Git.
 
 
 ### Add a new dependency
 
-1. `$ go get foo/bar`
-2. Edit your code to import foo/bar
+To add a dependency:
+
+```sh
+$ go get foo/bar
+```
 
 ### Upgrade a dependency
 
-As per instructions [here](https://github.com/golang/go/wiki/Modules#how-to-upgrade-and-downgrade-dependencies)
+To upgrade a dependency:
 
-1. `$ go get foo/bar`
+```sh
+$ go get foo/bar
+```
 
 This will upgrade to the latest version of `foo/bar` with a semver tag.
 Alternatively, `go get foo/bar@v1.2.3` will get a specific version.
+
 
 ## Docker image
 The [`Dockerfile`](/) uses 2 stages one for building and the final image.
