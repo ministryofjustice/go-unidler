@@ -24,7 +24,7 @@
     source.close();
 
     var elem = document.getElementById(finalState);
-    elem.classList.remove("hidden");
+    elem.classList.remove("moj-hidden");
 
     showMessage(finalMessage);
   }
